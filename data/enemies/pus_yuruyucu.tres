@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="PieceData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/logic/piece_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"pus_yuruyucu"
+ad = "Pus Yürüyücü"
+sinif = 0
+saldiri = 2
+can = 6
+hiz = 4
+mevzi_maliyeti = 1
+tier = 1

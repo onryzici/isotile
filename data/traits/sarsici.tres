@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="TraitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/logic/trait_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sarsici"
+ad = "Sarsıcı"
+aciklama = "Her 2. vuruşta hedefi 1 tur Sersemletir."
+tetik = 1
+kosul_deger = 2
+statu = &"sersem"
+statu_deger = 1
+hedef = 1

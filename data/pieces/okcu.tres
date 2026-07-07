@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="PieceData" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/logic/piece_data.gd" id="1"]
+[ext_resource type="Resource" path="res://data/traits/nisan.tres" id="2"]
+
+[resource]
+script = ExtResource("1")
+id = &"okcu"
+ad = "Okçu"
+sinif = 1
+saldiri = 2
+can = 6
+hiz = 6
+mevzi_maliyeti = 1
+base_traits = [ExtResource("2")]
+tier = 1
+mesh_id = &"archer"
