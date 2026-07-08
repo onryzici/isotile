@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="RelicData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/logic/relic_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"kutsal_kalinti"
+ad = "Kutsal Kalıntı"
+aciklama = "Unutulmuş bir azizin kemiği. Tüm birimlere ×1.15 Kat."
+fiyat = 18
+global_kat = 1.15

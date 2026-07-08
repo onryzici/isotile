@@ -5,46 +5,70 @@ extends Node3D
 ## Aşama 3-4: CombatResolver + Presenter buraya bağlanacak.
 
 const BG_COLOR := Color("0d0f1a")
+
+## Encounter -> üst bar başlığı
+const _ENC_TITLE := {
+	&"kolay": "SAVAŞ", &"orta": "SAVAŞ", &"orta2": "SAVAŞ",
+	&"elit": "ELİT SAVAŞ", &"boss": "BOSS SAVAŞI",
+}
 const OVERLAY_GREEN := Color(0.3, 0.8, 0.45, 0.45)
 const OVERLAY_YELLOW := Color(0.95, 0.8, 0.3, 0.85)
 const OVERLAY_RED := Color(0.95, 0.18, 0.12, 0.85)    # telegraph: vurulacak tile
 const OVERLAY_ORANGE := Color(0.9, 0.5, 0.15, 0.45)   # telegraph: düşman hareket hedefi
 
-## Sabit düşman kurulumu (M0 tek savaş; M2'de EncounterData'ya taşınır)
-const ENEMY_SETUP := {
-	Vector2i(1, 3): &"pus_yuruyucu",
-	Vector2i(4, 3): &"pus_yuruyucu",
-	Vector2i(2, 3): &"zirhli",
-	Vector2i(3, 4): &"nisanci",
-}
-
-## Sabit zemin yerleşimi (§7) — no-man's-land ağırlıklı; kutsal oyuncu bölgesinde
-## (konumlama kararı yaratır). M2'de EncounterData'ya taşınır.
-const TERRAIN_SETUP := {
-	Vector2i(0, 2): &"duvar",
-	Vector2i(2, 2): &"lav",
-	Vector2i(3, 2): &"diken",
-	Vector2i(5, 2): &"pus",
-	Vector2i(1, 1): &"kutsal",
-}
+## Savaş kurulumu artık Encounter'dan beslenir (§23): GameState.current_encounter
+## hangi düşman / zemin / yükselti / altın setinin yükleneceğini belirler.
+## Elle tasarlı setler için bkz. Encounters.DEFS.
+var _enemy_setup: Dictionary = {}     # Vector2i -> düşman id
+var _terrain_setup: Dictionary = {}   # Vector2i -> zemin tipi
+var _heights: Dictionary = {}         # Vector2i -> yükseklik
+var _enc_gold := 0                    # zafer altını (ödül akışı bunu kullanır)
 
 var board: BoardView
 var camera_rig: CameraRig
 var deployment: DeploymentLogic
 var ui: DeploymentUI
 
-enum Phase { DEPLOY, BATTLE, DONE }
+enum Phase { DEPLOY, PLANNING, RESOLVING, DONE }
+
+## Tur-tur savaş durumu (§B.0/3)
+var _units: Array = []                  # kalıcı CombatUnit listesi
+var _combat_state: Dictionary = {}      # diken vb. tur-arası korunan
+var _round := 0
+var _presenter: CombatPresenter
+var _uid_next := 0
+var _committed: Dictionary = {}         # squad index -> uid (savaşa girmiş birim)
+var _view_by_uid: Dictionary = {}       # uid -> PieceView
+const AP_REGEN := 3                      # tur başı yenilenen Mevzi
+const AP_MAX := 12
+
+## Kumandanlar (§B.0/4): 2 kumandan, farklı yetenek. GameState.commander_id seçer.
+const COMMANDERS := {
+	&"cesur": {"ad": "Cesur Serdar", "yetenek": "⚡ Yıldırım", "tip": "bolt", "deger": 6, "cd": 2},
+	&"bilge": {"ad": "Bilge Kâhin", "yetenek": "✚ Şifa Dalgası", "tip": "heal", "deger": 5, "cd": 3},
+}
+var _cmd: Dictionary = COMMANDERS[&"cesur"]
+var _cmd_cd := 0
+var _targeting := false                   # kumandan hedefleme modu
+var _last_won := false                    # savaş sonucu (haritaya dönüşte ilerleme)
 
 var _squad: Array = []
 var _coord_by_index: Dictionary = {}   # squad index -> Vector2i
 var _views_by_index: Dictionary = {}   # squad index -> PieceView
 var _enemy_views: Dictionary = {}      # Vector2i -> PieceView
+var _player_flag_coord: Vector2i       # bayraklar (§B.0/1)
+var _enemy_flag_coord: Vector2i
+var _enemy_flag_hp := 20
+var _player_flag_view: PieceView
+var _enemy_flag_view: PieceView
+var _battle_player_flag: CombatUnit    # savaş sonu kalan CAN'ı okumak için
 var _selected := -1
 var _hover: Variant = null             # Vector2i veya null
 var _phase := Phase.DEPLOY
 var _telegraph: Dictionary = {}        # Vector2i -> Color (düşman niyeti §11)
 
 func _ready() -> void:
+	_load_encounter()
 	_setup_environment()
 	_setup_lights()
 	_setup_camera()
@@ -52,22 +76,75 @@ func _ready() -> void:
 	_squad = GameState.squad
 	deployment = DeploymentLogic.new(GameState.mevzi)
 	# Oyuncu bölgesindeki geçilmez zemin deploy'u da bloklar
-	for coord: Vector2i in TERRAIN_SETUP:
-		if BoardDefs.is_player_zone(coord) and TERRAIN_SETUP[coord] == &"duvar":
+	for coord: Vector2i in _terrain_setup:
+		if BoardDefs.is_player_zone(coord) and _terrain_setup[coord] == &"duvar":
 			deployment.occupied[coord] = true
 	_setup_enemies()
+	_setup_flags()
 	_setup_ui()
 	_update_telegraph()
+	AudioDirector.play_music()   # atmosferik savaş müziği (döngü)
 	# Görsel doğrulama/CI: --autobattle argümanıyla otomatik diz + savaş
 	if "--autobattle" in OS.get_cmdline_user_args():
 		_debug_autobattle.call_deferred()
 
 # ------------------------------------------------------------------ kurulum
 
+## Aktif encounter'ı GameState'ten çöz ve setleri yükle (§23). Kopyalarız —
+## Encounters.DEFS sabit veri, savaş içinde mutasyona uğramamalı.
+func _load_encounter() -> void:
+	var enc := Encounters.get_def(GameState.current_encounter)
+	_enemy_setup = enc["enemies"].duplicate()
+	_terrain_setup = enc["terrain"].duplicate()
+	_heights = enc["heights"].duplicate()
+	_enc_gold = enc.get("gold", 0)
+
+## Ambient toz zerreleri — yavaş süzülen altın motes (atmosfer, referans hissi)
+func _setup_ambient() -> void:
+	var p := GPUParticles3D.new()
+	p.amount = 70
+	p.lifetime = 9.0
+	p.preprocess = 5.0
+	p.position = Vector3(0, 1.4, 0)
+	var mat := ParticleProcessMaterial.new()
+	mat.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	mat.emission_box_extents = Vector3(4.5, 2.2, 4.0)
+	mat.direction = Vector3(0.2, 1.0, 0.0)
+	mat.spread = 35.0
+	mat.initial_velocity_min = 0.04
+	mat.initial_velocity_max = 0.14
+	mat.gravity = Vector3(0, 0.015, 0)
+	mat.scale_min = 0.5
+	mat.scale_max = 1.3
+	p.process_material = mat
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.035, 0.035)
+	var dm := StandardMaterial3D.new()
+	dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	dm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	dm.albedo_color = Color(0.85, 0.74, 0.42, 0.5)
+	dm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	quad.material = dm
+	p.draw_pass_1 = quad
+	add_child(p)
+
 func _setup_environment() -> void:
+	# Arka plan: koyu mavi-gri radyal gradyan (referans hissi) — BG_CANVAS ile
+	var bg_layer := CanvasLayer.new()
+	bg_layer.layer = -10
+	var bg := ColorRect.new()
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var bg_mat := ShaderMaterial.new()
+	bg_mat.shader = preload("res://shaders/bg_gradient.gdshader")
+	bg.material = bg_mat
+	bg_layer.add_child(bg)
+	add_child(bg_layer)
+
 	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = BG_COLOR
+	env.background_mode = Environment.BG_CANVAS
+	env.background_canvas_max_layer = -1
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(0.45, 0.5, 0.75)
 	env.ambient_light_energy = 0.3
@@ -77,8 +154,10 @@ func _setup_environment() -> void:
 	env.glow_bloom = 0.02
 	env.glow_hdr_threshold = 1.1
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.ssao_enabled = true   # bloklar arası derinlik (§16.7)
-	env.ssao_intensity = 2.5
+	env.ssao_enabled = true   # sadece blok aralarında ince derinlik (§16.7)
+	env.ssao_intensity = 0.85   # düz çim üstünde muddy gölge yapmasın
+	env.ssao_radius = 0.45      # yalnız yakın köşe/oyuklar
+	env.ssao_power = 2.2        # çabuk sönümlensin, geniş leke bırakmasın
 	var world_env := WorldEnvironment.new()
 	world_env.environment = env
 	add_child(world_env)
@@ -118,27 +197,34 @@ func _setup_board() -> void:
 	board = BoardView.new()
 	board.name = "BoardRoot"
 	add_child(board)
-	# İki Yükselti tile'ı (§7) — biri no-man's-land, biri düşman bölgesi
-	board.build({
-		Vector2i(1, 3): 1,
-		Vector2i(4, 2): 1,
-	})
-	for coord: Vector2i in TERRAIN_SETUP:
-		board.set_terrain(coord, TERRAIN_SETUP[coord])
+	# Yükselti tile'ları encounter'dan (§7)
+	board.build(_heights)
+	for coord: Vector2i in _terrain_setup:
+		board.set_terrain(coord, _terrain_setup[coord])
+	board.play_intro()   # kurulum animasyonu: tile'lar dalga hâlinde yükselir
+
+## Bir birim/bayrak görselini kendi tile'ının dalgasıyla senkron pop yaptır.
+func _intro_pop(node: Node3D, coord: Vector2i) -> void:
+	var target := node.scale
+	node.scale = Vector3.ZERO
+	var tw := node.create_tween()
+	tw.tween_property(node, "scale", target, 0.5) \
+		.set_delay(board.intro_delay(coord) + 0.46) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 ## Resolver bağlamı: yükseklikler + zemin (saf mantık bunu okur)
 func _ctx() -> Dictionary:
-	return {"heights": board.height_map, "terrain": TERRAIN_SETUP}
+	return {"heights": board.height_map, "terrain": _terrain_setup, "relics": GameState.relics}
 
 ## mesh_id doluysa sprite yolu (§16.5 billboard birim), boşsa kapsül
 func _sprite_path(piece: PieceData) -> String:
 	return "res://assets/%s.png" % piece.mesh_id if piece.mesh_id != &"" else ""
 
 func _setup_enemies() -> void:
-	for coord: Vector2i in ENEMY_SETUP:
-		var data: PieceData = Database.get_resource("enemies", ENEMY_SETUP[coord])
+	for coord: Vector2i in _enemy_setup:
+		var data: PieceData = Database.get_resource("enemies", _enemy_setup[coord])
 		if data == null:
-			push_warning("Düşman verisi yok: %s" % ENEMY_SETUP[coord])
+			push_warning("Düşman verisi yok: %s" % _enemy_setup[coord])
 			continue
 		var view := PieceView.new()
 		add_child(view)
@@ -146,21 +232,60 @@ func _setup_enemies() -> void:
 		var base := board.coord_to_world(coord)
 		view.position = Vector3(base.x, board.tile_top_y(coord), base.z)
 		_enemy_views[coord] = view
+		_intro_pop(view, coord)
+
+## Bayraklar (§B.0/1): oyuncu arka satırı (0) + düşman arka satırı (son).
+## Zafer = düşman bayrağını yık. Oyuncu bayrağı CAN'ı kalıcı (GameState).
+func _setup_flags() -> void:
+	_enemy_flag_hp = Encounters.flag_hp(GameState.current_encounter)
+	_player_flag_coord = _free_tile_in_row(0, {})
+	var avoid := {}
+	for c: Vector2i in _enemy_setup:
+		avoid[c] = true
+	for c: Vector2i in _terrain_setup:
+		if _terrain_setup[c] == &"duvar":
+			avoid[c] = true
+	_enemy_flag_coord = _free_tile_in_row(BoardDefs.ROWS - 1, avoid)
+	deployment.occupied[_player_flag_coord] = true   # bayrak tile'ı deploy'a kapalı
+	_player_flag_view = _make_flag_view(_player_flag_coord, true, GameState.player_flag_hp)
+	_enemy_flag_view = _make_flag_view(_enemy_flag_coord, false, _enemy_flag_hp)
+
+## Satırda merkezden dışa doğru ilk boş (avoid'da olmayan) tile
+func _free_tile_in_row(row: int, avoid: Dictionary) -> Vector2i:
+	for c in [3, 2, 4, 1, 5, 0]:
+		var coord := Vector2i(c, row)
+		if not avoid.has(coord):
+			return coord
+	return Vector2i(3, row)
+
+func _make_flag_view(coord: Vector2i, side_blue: bool, hp: int) -> PieceView:
+	var view := PieceView.new()
+	add_child(view)
+	view.setup_flag(side_blue, hp)
+	var base := board.coord_to_world(coord)
+	view.position = Vector3(base.x, board.tile_top_y(coord), base.z)
+	_intro_pop(view, coord)
+	return view
 
 func _setup_ui() -> void:
 	ui = DeploymentUI.new()
 	add_child(ui)
 	ui.build(_squad)
 	ui.set_mevzi(deployment.mevzi)
+	ui.set_gold(GameState.gold)
+	ui.set_title(_ENC_TITLE.get(GameState.current_encounter, "SAVAŞ"))
+	_cmd = COMMANDERS.get(GameState.commander_id, COMMANDERS[&"cesur"])
+	ui.set_commander_name(_cmd["yetenek"])
 	ui.card_pressed.connect(_on_card_pressed)
-	ui.battle_pressed.connect(_on_battle_pressed)
-	ui.restart_pressed.connect(func(): get_tree().reload_current_scene())
+	ui.battle_pressed.connect(_on_end_turn)
+	ui.commander_pressed.connect(_on_commander)
+	ui.restart_pressed.connect(func(): EventBus.return_to_map.emit(_last_won))
 
 # ------------------------------------------------------------------ girdi
 
 func _unhandled_input(event: InputEvent) -> void:
-	if _phase != Phase.DEPLOY:
-		return   # savaş sırasında deployment girdisi kapalı (kamera kendi handler'ında)
+	if _phase != Phase.DEPLOY and _phase != Phase.PLANNING:
+		return   # tur çözülürken deployment girdisi kapalı (kamera kendi handler'ında)
 	if event is InputEventMouseMotion:
 		_update_hover(event.position)
 	elif event is InputEventMouseButton and event.pressed:
@@ -185,12 +310,18 @@ func _on_left_click(pos: Vector2) -> void:
 	var coord = _raycast_tile(pos)
 	if coord == null:
 		return
+	if _targeting:
+		_commander_target(coord)
+		return
 	if _selected >= 0:
 		_try_place(coord)
 	elif _index_at(coord) >= 0:
 		_pickup(coord)   # yerleşik birimi eline al (yeniden konumla)
 
 func _on_right_click(pos: Vector2) -> void:
+	if _targeting:
+		_cancel_targeting()
+		return
 	if _selected >= 0:
 		_deselect()
 		return
@@ -240,8 +371,8 @@ func _try_place(coord: Vector2i) -> void:
 
 func _remove_piece(coord: Vector2i) -> int:
 	var index := _index_at(coord)
-	if index < 0:
-		return -1
+	if index < 0 or _committed.has(index):
+		return -1   # savaşa girmiş birim geri alınamaz/taşınamaz (§B.0/3)
 	var piece: PieceData = _squad[index]
 	deployment.remove(piece.mevzi_maliyeti, coord)
 	_views_by_index[index].queue_free()
@@ -274,7 +405,7 @@ func _deselect() -> void:
 ## Overlay önceliği: sarı hover > kırmızı telegraph > yeşil geçerli tile
 func _refresh_overlays() -> void:
 	board.clear_overlays()
-	if _phase != Phase.DEPLOY:
+	if _phase != Phase.DEPLOY and _phase != Phase.PLANNING:
 		return
 	for coord: Vector2i in _telegraph:
 		board.set_overlay(coord, _telegraph[coord])
@@ -297,6 +428,8 @@ func _refresh_overlays() -> void:
 ## klon birimlerle çözülür, 1. turdaki düşman hamleleri okunur.
 ## Kırmızı = vurulacak dostunun tile'ı, turuncu = düşmanın yürüyeceği tile.
 func _update_telegraph() -> void:
+	if _phase != Phase.DEPLOY:
+		return   # tur-tur savaşta önizleme yok (canlı statüler korunur)
 	_telegraph.clear()
 	for view: PieceView in _enemy_views.values():
 		view.set_status_text("")
@@ -354,61 +487,214 @@ func _build_units() -> Dictionary:
 	for coord: Vector2i in enemy_coords:
 		uid += 1
 		units.append(CombatUnit.from_piece(
-			Database.get_resource("enemies", ENEMY_SETUP[coord]),
+			Database.get_resource("enemies", _enemy_setup[coord]),
 			CombatResolver.SIDE_ENEMY, coord, uid))
 		views[uid] = _enemy_views[coord]
 		enemy_uids[uid] = _enemy_views[coord]
-	return {"units": units, "views": views, "player_coords": player_coords, "enemy_uids": enemy_uids}
+	# Bayraklar (§B.0/1): hareketsiz hedefler. Oyuncu bayrağı player_coords'a
+	# eklenir ki telegraph ona yapılacak saldırıyı da işaretleyebilsin.
+	uid += 1
+	var pflag := CombatUnit.make_flag(CombatResolver.SIDE_PLAYER, _player_flag_coord,
+		GameState.player_flag_hp, uid, "Oyuncu Bayrağı")
+	units.append(pflag)
+	views[uid] = _player_flag_view
+	player_coords[uid] = _player_flag_coord
+	uid += 1
+	units.append(CombatUnit.make_flag(CombatResolver.SIDE_ENEMY, _enemy_flag_coord,
+		_enemy_flag_hp, uid, "Düşman Bayrağı"))
+	views[uid] = _enemy_flag_view
+	return {"units": units, "views": views, "player_coords": player_coords,
+		"enemy_uids": enemy_uids, "player_flag": pflag}
 
 # ------------------------------------------------------------------ savaş akışı
 
-## "SAVAŞ" (§3.2): geri dönüş yok. Kurulum → CombatUnit'ler → resolve → playback.
-func _on_battle_pressed() -> void:
-	if _phase != Phase.DEPLOY or _coord_by_index.is_empty():
+## "TUR ✓" (§B.0/3): bu turda dizilen takviyeleri bağla → 1 tur çöz → planlama.
+func _on_end_turn() -> void:
+	if _phase != Phase.DEPLOY and _phase != Phase.PLANNING:
 		return
-	_phase = Phase.BATTLE
+	if _phase == Phase.DEPLOY:
+		if _coord_by_index.is_empty():
+			return   # ilk tur en az 1 birim gerek
+		_start_battle()
+	_phase = Phase.RESOLVING
 	_deselect()
 	_telegraph.clear()
 	board.clear_overlays()
 	for view: PieceView in _enemy_views.values():
-		view.set_status_text("")   # niyet metinleri temizlenir; savaşta statüler yazar
-
-	var built := _build_units()
-	var units: Array = built["units"]
-	var views: Dictionary = built["views"]
-
-	# Savaş başı anlık görüntü (presenter etiketleri bununla günceller;
-	# resolver units'i yerinde mutasyona uğratır)
-	var info: Dictionary = {}
-	for u: CombatUnit in units:
-		info[u.uid] = {"ad": u.ad, "atk": u.atk, "spd": u.spd, "hp": u.hp, "max_hp": u.max_hp}
-
-	var result := CombatResolver.resolve(units, _ctx(), GameState.run_seed)
-
+		view.set_status_text("")
 	ui.enter_battle_mode()
+	await _run_turn()
+
+func _info_of(u: CombatUnit) -> Dictionary:
+	return {"ad": u.ad, "atk": u.atk, "spd": u.spd, "hp": u.hp, "max_hp": u.max_hp}
+
+## Düşmanları + bayrakları CombatUnit olarak kur, presenter'ı bir kez ayarla
+func _start_battle() -> void:
+	_units = []
+	_combat_state = {"diken": {}}
+	_uid_next = 0
+	_committed = {}
+	_view_by_uid = {}
+	var enemy_coords := _enemy_views.keys()
+	enemy_coords.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		return a.y < b.y if a.y != b.y else a.x < b.x)
+	for coord: Vector2i in enemy_coords:
+		_uid_next += 1
+		_units.append(CombatUnit.from_piece(
+			Database.get_resource("enemies", _enemy_setup[coord]),
+			CombatResolver.SIDE_ENEMY, coord, _uid_next))
+		_view_by_uid[_uid_next] = _enemy_views[coord]
+	_uid_next += 1
+	_battle_player_flag = CombatUnit.make_flag(CombatResolver.SIDE_PLAYER,
+		_player_flag_coord, GameState.player_flag_hp, _uid_next, "Oyuncu Bayrağı")
+	_units.append(_battle_player_flag)
+	_view_by_uid[_uid_next] = _player_flag_view
+	_uid_next += 1
+	_units.append(CombatUnit.make_flag(CombatResolver.SIDE_ENEMY,
+		_enemy_flag_coord, _enemy_flag_hp, _uid_next, "Düşman Bayrağı"))
+	_view_by_uid[_uid_next] = _enemy_flag_view
+	_presenter = CombatPresenter.new()
+	add_child(_presenter)
+	_presenter.round_changed.connect(ui.set_round)
+	_presenter.log_line.connect(ui.add_log)   # savaş logu
+	ui.speed_selected.connect(_presenter.set_speed)
+	ui.skip_pressed.connect(_presenter.request_skip)
+	var info: Dictionary = {}
+	for u: CombatUnit in _units:
+		info[u.uid] = _info_of(u)
+	_presenter.setup(_view_by_uid, board, info)
 	EventBus.battle_started.emit()
 	AudioDirector.play_sfx(&"battle_start")
 
-	var presenter := CombatPresenter.new()
-	add_child(presenter)
-	presenter.round_changed.connect(ui.set_round)
-	ui.speed_selected.connect(presenter.set_speed)
-	ui.skip_pressed.connect(presenter.request_skip)
-	presenter.finished.connect(_on_battle_finished)
-	presenter.play(result, views, board, info)
+## Yeni dizilenleri _units'e kat (ON_DEPLOY), 1 tur çöz, sonucu değerlendir
+func _run_turn() -> void:
+	var new_units: Array = []
+	var indices := _coord_by_index.keys()
+	indices.sort()
+	for i: int in indices:
+		if not _committed.has(i):
+			_uid_next += 1
+			var u := CombatUnit.from_piece(_squad[i], CombatResolver.SIDE_PLAYER,
+				_coord_by_index[i], _uid_next)
+			_units.append(u)
+			_committed[i] = _uid_next
+			_view_by_uid[_uid_next] = _views_by_index[i]
+			_presenter.add_unit(_uid_next, _views_by_index[i], _info_of(u))
+			new_units.append(u)
+	# İlk turda relic savaş-başı kalkanı (§B.9)
+	if _round == 0:
+		var rshield := GameState.relic_sum(&"baslangic_kalkan")
+		if rshield > 0:
+			for u: CombatUnit in new_units:
+				u.kalkan += rshield
+	if not new_units.is_empty():
+		var dp := CombatResolver.deploy_procs_for(new_units, _units, _ctx())
+		if not dp.is_empty():
+			await _presenter.play_round(dp)
+	_round += 1
+	var events := CombatResolver.resolve_round(_units, _ctx(), _round, _combat_state)
+	await _presenter.play_round(events)
+	_presenter.sync_views(_units)
+	if CombatResolver.is_over(_units) or _round >= BoardDefs.MAX_ROUND:
+		_finish_battle()
+	else:
+		_enter_planning()
 
-func _on_battle_finished(kazanan: String) -> void:
+## Tur arası planlama: AP yenile, takviye dizmeye izin ver
+func _enter_planning() -> void:
+	_phase = Phase.PLANNING
+	deployment.mevzi = mini(AP_MAX, deployment.mevzi + AP_REGEN + GameState.relic_sum(&"mevzi_bonus"))
+	_cmd_cd = maxi(0, _cmd_cd - 1)
+	ui.enter_planning_mode(deployment.mevzi)
+	ui.set_commander(_cmd_cd == 0, _cmd_cd)
+	_refresh_overlays()
+
+# ------------------------------------------------------------------ kumandan (§B.0/4)
+
+## Kumandan yeteneği: bolt → hedefleme; heal → anında tüm dostları iyileştir
+func _on_commander() -> void:
+	if _phase != Phase.PLANNING or _cmd_cd > 0 or _targeting:
+		return
+	if _cmd["tip"] == "heal":
+		_apply_heal_wave()
+		_cmd_cd = _cmd["cd"]
+		ui.set_commander(false, _cmd_cd)
+		return
+	_targeting = true
+	_deselect()
+	board.clear_overlays()
+	for u: CombatUnit in _units:
+		if u.alive and u.side == CombatResolver.SIDE_ENEMY:
+			board.set_overlay(u.coord, OVERLAY_RED)
+
+## Şifa Dalgası: tüm canlı oyuncu birimlerine +deger CAN
+func _apply_heal_wave() -> void:
+	var amt: int = _cmd["deger"]
+	for u: CombatUnit in _units:
+		if u.alive and not u.is_flag and u.side == CombatResolver.SIDE_PLAYER:
+			u.hp = mini(u.max_hp, u.hp + amt)
+			var view: PieceView = _view_by_uid.get(u.uid)
+			if view:
+				view.set_stat_text("%d/%d/%d" % [u.atk, u.hp, u.spd])
+	AudioDirector.play_sfx(&"heal")
+
+func _cancel_targeting() -> void:
+	_targeting = false
+	_refresh_overlays()
+
+## Tıklanan tile'daki düşmana yıldırım hasarı uygula
+func _commander_target(coord: Vector2i) -> void:
+	var target: CombatUnit = null
+	for u: CombatUnit in _units:
+		if u.alive and u.side == CombatResolver.SIDE_ENEMY and u.coord == coord:
+			target = u
+			break
+	if target == null:
+		return   # geçersiz hedef — hedefleme sürer
+	_apply_commander_bolt(target)
+	_targeting = false
+	_cmd_cd = _cmd["cd"]
+	ui.set_commander(false, _cmd_cd)
+	_refresh_overlays()
+	if CombatResolver.is_over(_units):
+		_finish_battle()
+
+func _apply_commander_bolt(u: CombatUnit) -> void:
+	var dmg: int = _cmd["deger"]
+	var absorbed := mini(dmg, u.kalkan)
+	u.kalkan -= absorbed
+	u.hp -= dmg - absorbed
+	var view: PieceView = _view_by_uid.get(u.uid)
+	if view:
+		view.hit_flash(0.3)
+		view.set_stat_text("%d/%d/%d" % [u.atk, maxi(0, u.hp), u.spd])
+	AudioDirector.play_sfx(&"hit", 0.05)
+	if u.hp <= 0 and u.alive:
+		u.alive = false
+		if view:
+			var tw := view.die_anim(0.35)
+			tw.finished.connect(func(): view.visible = false)
+
+func _finish_battle() -> void:
 	_phase = Phase.DONE
+	var kazanan := CombatResolver.winner(_units)
 	var player_won := kazanan == "PLAYER"
+	_last_won = player_won
+	if player_won:
+		GameState.gold += _enc_gold + GameState.relic_sum(&"altin_bonus")   # zafer altını (§21)
+	if _battle_player_flag != null:
+		GameState.apply_flag_result(_battle_player_flag.hp)   # kalıcı bayrak CAN'ı (§B.0/2)
 	ui.show_result(player_won)
 	EventBus.battle_finished.emit(player_won)
 	AudioDirector.play_sfx(&"victory" if player_won else &"defeat")
 
-## --autobattle: sabit dizilişle otomatik savaş (görsel doğrulama için)
+## --autobattle: dizip turları otomatik oyna (görsel doğrulama)
 func _debug_autobattle() -> void:
-	var spots: Array[Vector2i] = [Vector2i(1, 1), Vector2i(2, 0), Vector2i(4, 1), Vector2i(3, 0)]
+	var spots: Array[Vector2i] = [Vector2i(1, 1), Vector2i(2, 1), Vector2i(4, 1), Vector2i(0, 1)]
 	for i in _squad.size():
 		_selected = i
 		_try_place(spots[i])
 	await get_tree().create_timer(0.4).timeout
-	_on_battle_pressed()
+	while _phase == Phase.DEPLOY or _phase == Phase.PLANNING:
+		await _on_end_turn()
+		await get_tree().create_timer(0.15).timeout

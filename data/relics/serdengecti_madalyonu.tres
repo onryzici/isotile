@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="RelicData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/logic/relic_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"serdengecti_madalyonu"
+ad = "Serdengeçti Madalyonu"
+aciklama = "Gözünü budaktan sakınmayanların madalyonu. Tüm birimlere ×1.2 Kat."
+fiyat = 22
+global_kat = 1.2

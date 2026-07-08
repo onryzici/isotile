@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="RelicData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/logic/relic_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"atalarin_siperi"
+ad = "Ataların Siperi"
+aciklama = "Nesillerin ardında dayanan siper. Savaş başı tüm birimlere 8 Kalkan."
+fiyat = 20
+baslangic_kalkan = 8

@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="RelicData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/logic/relic_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"pus_muskasi"
+ad = "Pus Muskası"
+aciklama = "Pusun içinden gelen fısıltılar tüm birimlere güç katar. +2 Güç."
+fiyat = 15
+global_ek_guc = 2

@@ -17,6 +17,8 @@ enum Sinif { MELEE, RANGED, SUPPORT }
 @export var etiketler: Array[StringName] = []   # sinerji tag'leri
 @export var tier: int = 1
 @export var mesh_id: StringName = &""           # dummy: renkli kapsül
+@export var starter: bool = true                # false = recruit havuzu (ödül/dükkan)
+@export var fiyat: int = 8                       # dükkanda satın alma bedeli
 
 func trait_names() -> String:
 	var names: Array[String] = []

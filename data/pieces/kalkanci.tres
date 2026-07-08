@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="PieceData" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://src/logic/piece_data.gd" id="1"]
+[ext_resource type="Resource" path="res://data/traits/kalkan_durusu.tres" id="2"]
+[ext_resource type="Resource" path="res://data/traits/muhafiz_kalkani.tres" id="3"]
+
+[resource]
+script = ExtResource("1")
+id = &"kalkanci"
+ad = "Kalkancı"
+sinif = 0
+saldiri = 1
+can = 16
+hiz = 2
+zirh = 1
+mevzi_maliyeti = 3
+base_traits = [ExtResource("2"), ExtResource("3")]
+etiketler = [&"Muhafız"]
+tier = 2
+mesh_id = &""
+starter = false
+fiyat = 10

@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="TraitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/logic/trait_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"kor_patlamasi"
+ad = "Kor Patlaması"
+aciklama = "Ölünce komşu düşmanlara max CAN'ının %40'ı hasar."
+tetik = 3
+hasar_yuzde_can = 0.4
+hedef = 3

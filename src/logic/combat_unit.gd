@@ -36,6 +36,24 @@ var kok: int = 0                 # hareket edemez
 var lanet_sure: int = 0          # ×0.5 Kat
 
 var alive := true
+var is_flag := false          # bayrak/kamp birimi (§B.0/1): hareketsiz hedef, CAN'lı
+
+## Bayrak birimi (gelistirme B.0/1): ızgaranın karşı ucunda, CAN'lı, hareketsiz.
+## Zafer = düşman bayrağını yıkmak. Oyuncu bayrağı CAN'ı run boyu KALICI (§B.0/2).
+static func make_flag(side_: int, coord_: Vector2i, hp_: int, uid_: int, ad_: String = "Bayrak") -> CombatUnit:
+	var u := CombatUnit.new()
+	u.uid = uid_
+	u.piece_id = &"__flag"
+	u.ad = ad_
+	u.side = side_
+	u.sinif = PieceData.Sinif.MELEE
+	u.coord = coord_
+	u.atk = 0
+	u.hp = hp_
+	u.max_hp = hp_
+	u.spd = -1                # aktivasyon sırasına girmez
+	u.is_flag = true
+	return u
 
 static func from_piece(piece: PieceData, side_: int, coord_: Vector2i, uid_: int) -> CombatUnit:
 	var u := CombatUnit.new()

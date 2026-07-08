@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bbm5s0ufnqeyy"
-path="res://.godot/imported/soldier-lamb-attack.png-a5e663b6a8213f63027adfc412d2bfe4.ctex"
+uid="uid://dmbnls5mx8ojs"
+path="res://.godot/imported/health.svg-a9aab8aa84b98ca4c19e3f20a97ec801.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/soldier-lamb-attack.png"
-dest_files=["res://.godot/imported/soldier-lamb-attack.png-a5e663b6a8213f63027adfc412d2bfe4.ctex"]
+source_file="res://assets/icons/health.svg"
+dest_files=["res://.godot/imported/health.svg-a9aab8aa84b98ca4c19e3f20a97ec801.ctex"]
 
 [params]
 
@@ -38,3 +38,6 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
+svg/scale=1.0
+editor/scale_with_editor_scale=false
+editor/convert_colors_with_editor_theme=false

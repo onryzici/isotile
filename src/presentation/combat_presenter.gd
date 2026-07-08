@@ -6,6 +6,7 @@ extends Node
 
 signal finished(kazanan: String)
 signal round_changed(round_no: int)
+signal log_line(text: String)   # savaş logu (kim kime vurdu / kim düştü)
 
 const COLOR_DAMAGE := Color(1.0, 0.6, 0.15)   # SALDIRI turuncu (§19)
 const COLOR_HEAL := Color(0.35, 1.0, 0.4)
@@ -33,13 +34,9 @@ func set_speed(mult: float) -> void:
 func request_skip() -> void:
 	_skip = true
 
+## Tek-seferlik oynatma (autobattle / geriye uyum): tüm event'ler + finished.
 func play(result: Dictionary, views: Dictionary, board: BoardView, info: Dictionary) -> void:
-	_views = views
-	_board = board
-	_info = info
-	_hp = {}
-	for uid in info:
-		_hp[uid] = info[uid]["hp"]
+	setup(views, board, info)
 	for event: Dictionary in result["events"]:
 		if _skip:
 			break
@@ -47,6 +44,42 @@ func play(result: Dictionary, views: Dictionary, board: BoardView, info: Diction
 	if _skip:
 		_apply_final(result)
 	finished.emit(result["kazanan"])
+
+## Tur-tur mod (§B.0/3): battle_screen bir kez setup çağırır, her tur play_round.
+func setup(views: Dictionary, board: BoardView, info: Dictionary) -> void:
+	_views = views
+	_board = board
+	_info = info
+	_hp = {}
+	for uid in info:
+		_hp[uid] = info[uid]["hp"]
+
+## Tur ortasında yeni yerleştirilen birimi kaydet
+func add_unit(uid: int, view: PieceView, info_entry: Dictionary) -> void:
+	_views[uid] = view
+	_info[uid] = info_entry
+	_hp[uid] = info_entry["hp"]
+
+## Bir turun event'lerini oynat (HP/statü kalıcı — sıfırlanmaz). "Atla" o turu hızlar.
+func play_round(events: Array) -> void:
+	for event: Dictionary in events:
+		if _skip:
+			break
+		await _play_event(event)
+	_skip = false
+
+## Turdan sonra görselleri otoriter birim durumuna eşitle (özellikle "Atla" sonrası)
+func sync_views(units: Array) -> void:
+	for unit: CombatUnit in units:
+		var view: PieceView = _views.get(unit.uid)
+		if view == null:
+			continue
+		view.visible = unit.alive
+		_hp[unit.uid] = unit.hp
+		if unit.alive:
+			var base: Vector3 = _board.coord_to_world(unit.coord)
+			view.position = Vector3(base.x, _board.tile_top_y(unit.coord), base.z)
+			_update_label(unit.uid)
 
 # ------------------------------------------------------------- event oynatma
 
@@ -72,7 +105,7 @@ func _play_event(e: Dictionary) -> void:
 				_hp[e["dst"]] = mini(_hp[e["dst"]] + e["amount"], _info[e["dst"]]["max_hp"])
 				_update_label(e["dst"])
 				_spawn_number(dst.position, "+%d" % e["amount"], COLOR_HEAL)
-				AudioDirector.play_sfx(&"heal")
+				AudioDirector.play_sfx(&"heal", 0.06)
 			await _delay(0.25)
 		"PUS_DAMAGE":
 			var view: PieceView = _views.get(e["unit_id"])
@@ -112,8 +145,9 @@ func _play_event(e: Dictionary) -> void:
 			await _delay(0.3)
 		"DEATH":
 			var view: PieceView = _views.get(e["unit_id"])
+			log_line.emit("☠ %s düştü" % _info.get(e["unit_id"], {}).get("ad", "?"))
 			if view:
-				AudioDirector.play_sfx(&"death")
+				AudioDirector.play_sfx(&"death", 0.07)
 				var tw := view.die_anim(0.35 / speed)
 				await tw.finished
 				view.visible = false
@@ -132,6 +166,9 @@ func _play_attack(e: Dictionary) -> void:
 	_update_label(e["dst"])
 	_spawn_number(dst.position, "-%d" % e["final"], COLOR_DAMAGE)
 	AudioDirector.play_sfx(&"hit", 0.08)
+	var sn: String = _info.get(e["src"], {}).get("ad", "?")
+	var dn: String = _info.get(e["dst"], {}).get("ad", "?")
+	log_line.emit("%s  ⚔ %s  −%d" % [sn, dn, e["final"]])
 	await tw.finished
 
 # ------------------------------------------------------------- yardımcılar
@@ -168,6 +205,7 @@ func _spawn_number(world_pos: Vector3, text: String, color: Color) -> void:
 	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	lbl.no_depth_test = true
 	lbl.pixel_size = 0.008
+	lbl.font = UITheme.body_font()
 	lbl.font_size = 64
 	lbl.outline_size = 18
 	lbl.modulate = color

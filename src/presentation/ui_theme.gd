@@ -2,6 +2,10 @@ class_name UITheme
 extends RefCounted
 ## Ortak koyu UI teması — referans ton: koyu panel, ince sıcak kenarlık,
 ## kırık beyaz metin. Godot varsayılan grisinin "tarayıcı oyunu" hissini kırar.
+##
+## Tipografi (medieval yön — eşleşen Omnibus-Type çifti):
+##   Gövde/arayüz/sayı → Grenze (eski-usul manuscript serif, okunur, Türkçe tam)
+##   Başlık/display    → Grenze Gotisch (blackletter/gotik, medieval karakter)
 
 const TEXT := Color(0.87, 0.82, 0.7)
 const TEXT_DIM := Color(0.6, 0.57, 0.5)
@@ -9,8 +13,34 @@ const PANEL_BG := Color(0.07, 0.07, 0.11, 0.94)
 const BORDER := Color(0.32, 0.27, 0.2)
 const BORDER_HOT := Color(0.85, 0.65, 0.3)
 
+const _BODY_TTF := "res://assets/fonts/Grenze.ttf"
+const _DISPLAY_TTF := "res://assets/fonts/GrenzeGotisch.ttf"
+
+static var _body: Font
+static var _display: Font
+
+## Gövde/arayüz fontu — okunur manuscript serif, orta ağırlık.
+static func body_font() -> Font:
+	if _body == null:
+		var fv := FontVariation.new()
+		fv.base_font = load(_BODY_TTF)
+		fv.variation_opentype = {"wght": 500}
+		_body = fv
+	return _body
+
+## Başlık/display fontu — blackletter gotik (medieval), kalınca ağırlık.
+static func display_font() -> Font:
+	if _display == null:
+		var fv := FontVariation.new()
+		fv.base_font = load(_DISPLAY_TTF)
+		fv.variation_opentype = {"wght": 600}
+		_display = fv
+	return _display
+
 static func make() -> Theme:
 	var theme := Theme.new()
+
+	theme.default_font = body_font()
 
 	var normal := _box(PANEL_BG, BORDER)
 	var hover := _box(Color(0.12, 0.11, 0.16, 0.96), BORDER_HOT)
@@ -29,6 +59,13 @@ static func make() -> Theme:
 	theme.set_color("font_color", "Label", TEXT)
 	theme.set_stylebox("panel", "PanelContainer", _box(PANEL_BG, BORDER))
 	theme.set_stylebox("panel", "Panel", _box(PANEL_BG, BORDER))
+
+	# "Title" tip varyasyonu: başlık Label'ları display fontu kullansın
+	# (kodda: label.theme_type_variation = "Title").
+	theme.add_type("Title")
+	theme.set_type_variation("Title", "Label")
+	theme.set_font("font", "Title", display_font())
+	theme.set_color("font_color", "Title", Color(0.92, 0.86, 0.72))
 	return theme
 
 static func _box(bg: Color, border: Color) -> StyleBoxFlat:

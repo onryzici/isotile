@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="RelicData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/logic/relic_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"tiryaki_kupasi"
+ad = "Tiryaki Kupası"
+aciklama = "Dibi görünmeyen bir kupa. Her zaferde +12 altın."
+fiyat = 16
+altin_bonus = 12

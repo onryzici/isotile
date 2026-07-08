@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="RelicData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/logic/relic_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"kanli_tilsim"
+ad = "Kanlı Tılsım"
+aciklama = "Dökülen kanla beslenen tılsım, birliklerine kıvılcım verir. +1 Güç."
+fiyat = 11
+global_ek_guc = 1

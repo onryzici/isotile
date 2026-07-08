@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="TraitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/logic/trait_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"zafer_narasi"
+ad = "Zafer Narası"
+aciklama = "Her tur başı kalıcı +0.15 Kat kazanır (savaş boyu birikir)."
+tetik = 5
+kalici_kat = 0.15

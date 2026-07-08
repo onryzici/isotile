@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="PieceData" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/logic/piece_data.gd" id="1"]
+[ext_resource type="Resource" path="res://data/traits/ruzgar_kanadi.tres" id="2"]
+
+[resource]
+script = ExtResource("1")
+id = &"suvari"
+ad = "Süvari"
+sinif = 0
+saldiri = 3
+can = 9
+hiz = 8
+mevzi_maliyeti = 2
+base_traits = [ExtResource("2")]
+tier = 2
+mesh_id = &""
+starter = false
+fiyat = 11

@@ -19,7 +19,12 @@ var _visual: Node3D          # MeshInstance3D (kapsül) veya Sprite3D
 var _visual_h := 0.9         # görsel yükseklik (etiket konumu için)
 var _is_sprite := false
 var _mat: ShaderMaterial     # kapsül modunda flash için
-var _label: Label3D
+var _badge_vp: SubViewport   # stat rozetlerinin çizildiği viewport
+var _badges: StatBadges
+var _badge_sprite: Sprite3D  # rozetleri dünyada gösteren billboard
+var _max_hp := -1
+var _is_flag := false
+var _flag_hp_label: Label3D  # bayrak modunda büyük CAN göstergesi
 var _status_label: Label3D
 
 func setup(class_key: StringName, stat_text: String, scale_mul: float = 1.0, sprite_path: String = "") -> void:
@@ -29,15 +34,24 @@ func setup(class_key: StringName, stat_text: String, scale_mul: float = 1.0, spr
 		_setup_capsule(class_key, scale_mul)
 	_add_blob_shadow(scale_mul)
 
-	_label = Label3D.new()
-	_label.text = stat_text
-	_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	_label.no_depth_test = true
-	_label.pixel_size = 0.006
-	_label.font_size = 40
-	_label.outline_size = 10
-	_label.position.y = _visual_h + 0.35
-	add_child(_label)
+	# Stat rozetleri (§16.5): SubViewport'ta çizilir, billboard Sprite3D'de gösterilir
+	_badge_vp = SubViewport.new()
+	_badge_vp.size = Vector2i(StatBadges.VP_SIZE)
+	_badge_vp.transparent_bg = true
+	_badge_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	_badges = StatBadges.new()
+	_badge_vp.add_child(_badges)
+	add_child(_badge_vp)
+
+	_badge_sprite = Sprite3D.new()
+	_badge_sprite.texture = _badge_vp.get_texture()
+	_badge_sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_badge_sprite.no_depth_test = true
+	# Karakterin sağ-altında — yuksek çözünürlük viewport küçülünce keskin
+	_badge_sprite.pixel_size = 0.74 / StatBadges.VP_SIZE.x
+	_badge_sprite.position = Vector3(0.34, _visual_h * 0.28, 0.28)
+	add_child(_badge_sprite)
+	_apply_stat_text(stat_text)
 
 	# Statü şeridi (§16.6 dummy'si): birimin altında minik metin satırı
 	_status_label = Label3D.new()
@@ -45,11 +59,73 @@ func setup(class_key: StringName, stat_text: String, scale_mul: float = 1.0, spr
 	_status_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_status_label.no_depth_test = true
 	_status_label.pixel_size = 0.005
+	_status_label.font = UITheme.body_font()
 	_status_label.font_size = 30
 	_status_label.outline_size = 8
 	_status_label.modulate = Color(0.85, 0.95, 1.0)
 	_status_label.position.y = _visual_h + 0.12
 	add_child(_status_label)
+
+## Bayrak/hedef nişanı (§B.0/1): 3D toon anıt taşı + kristal + büyük CAN göstergesi.
+## (Eski billboard sancak kaldırıldı — 3D küp estetiğine uyması için.)
+## side_blue=true oyuncu (mavi), false düşman (kızıl).
+func setup_flag(side_blue: bool, hp: int) -> void:
+	_is_flag = true
+	var tint := Color(0.32, 0.46, 0.72) if side_blue else Color(0.66, 0.26, 0.24)
+	var stone := Color(0.30, 0.30, 0.34)
+	var root := Node3D.new()
+	# taş kaide
+	var ped := MeshInstance3D.new()
+	var pm := BoxMesh.new(); pm.size = Vector3(0.62, 0.34, 0.62)
+	ped.mesh = pm; ped.position.y = 0.17
+	ped.material_override = _mono_mat(stone)
+	root.add_child(ped)
+	# nişan sütunu (obelisk)
+	var col := MeshInstance3D.new()
+	var cm := BoxMesh.new(); cm.size = Vector3(0.30, 1.0, 0.30)
+	col.mesh = cm; col.position.y = 0.34 + 0.5
+	col.material_override = _mono_mat(stone.lerp(tint, 0.2))
+	root.add_child(col)
+	# tepe kristali (takım rengi, hafif parlayan) — 45° döndürülmüş küp
+	var gem := MeshInstance3D.new()
+	var gm := BoxMesh.new(); gm.size = Vector3(0.28, 0.28, 0.28)
+	gem.mesh = gm; gem.position.y = 0.34 + 1.0 + 0.16
+	gem.rotation_degrees = Vector3(45, 45, 0)
+	var gmat := _mono_mat(tint)
+	gmat.set_shader_parameter("emission_color", tint)
+	gmat.set_shader_parameter("emission_strength", 1.1)
+	gem.material_override = gmat
+	root.add_child(gem)
+	add_child(root)
+	_visual = root
+	_visual_h = 1.7
+	_is_sprite = false
+	_add_blob_shadow(1.1)
+	# büyük CAN göstergesi
+	_flag_hp_label = Label3D.new()
+	_flag_hp_label.text = str(hp)
+	_flag_hp_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_flag_hp_label.no_depth_test = true
+	_flag_hp_label.pixel_size = 0.007
+	_flag_hp_label.font = UITheme.body_font()
+	_flag_hp_label.font_size = 56
+	_flag_hp_label.outline_size = 12
+	_flag_hp_label.modulate = Color(0.95, 0.55, 0.5) if not side_blue else Color(0.65, 0.8, 1.0)
+	_flag_hp_label.position.y = _visual_h + 0.45
+	add_child(_flag_hp_label)
+	_max_hp = hp
+
+func _mono_mat(color: Color) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = TOON
+	m.set_shader_parameter("top_color", color)
+	m.set_shader_parameter("use_side_split", false)
+	m.set_shader_parameter("mottle_strength", 0.18)
+	var outline := ShaderMaterial.new()
+	outline.shader = OUTLINE
+	outline.set_shader_parameter("grow", 0.04)
+	m.next_pass = outline
+	return m
 
 func _setup_capsule(class_key: StringName, scale_mul: float) -> void:
 	var color: Color = CLASS_COLORS.get(class_key, Color.GRAY)
@@ -78,10 +154,15 @@ func _setup_sprite(path: String, scale_mul: float) -> void:
 	var tex: Texture2D = load(path)
 	var sprite := Sprite3D.new()
 	sprite.texture = tex
-	sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	# şeffaflık sıralama sorunlarına karşı kesin alfa kesimi
-	sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
+	# İç siyah kenar (inside border) + billboard shader'da; Sprite3D billboard'ı kapalı
+	sprite.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+	sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISABLED
 	sprite.no_depth_test = false
+	var bmat := ShaderMaterial.new()
+	bmat.shader = preload("res://shaders/sprite_border.gdshader")
+	bmat.set_shader_parameter("tex", tex)
+	bmat.set_shader_parameter("border_px", 3.0)
+	sprite.material_override = bmat
 	# hedef boy ~1.4 dünya birimi (görsellerin kendi kenar boşluğu payıyla)
 	var target_h := 1.4 * scale_mul
 	sprite.pixel_size = target_h / float(tex.get_height())
@@ -95,18 +176,34 @@ func _setup_sprite(path: String, scale_mul: float) -> void:
 func _add_blob_shadow(scale_mul: float) -> void:
 	var shadow := MeshInstance3D.new()
 	var mesh := PlaneMesh.new()
-	var r := (0.74 if _is_sprite else 0.6) * scale_mul
-	mesh.size = Vector2(r, r * 0.72)   # iso perspektifte hafif elips
+	var r := (0.82 if _is_sprite else 0.56) * scale_mul
+	mesh.size = Vector2(r, r * 0.72)   # iso perspektifte hafif elips, kaidenin altına
 	shadow.mesh = mesh
 	var mat := ShaderMaterial.new()
 	mat.shader = preload("res://shaders/blob_shadow.gdshader")
+	mat.set_shader_parameter("opacity", 0.88 if _is_sprite else 0.72)   # figürin altı net kontakt gölge
 	shadow.material_override = mat
 	shadow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	shadow.position.y = 0.025
+	shadow.position.y = 0.03
 	add_child(shadow)
 
 func set_stat_text(text: String) -> void:
-	_label.text = text
+	_apply_stat_text(text)
+
+## "atk/hp/spd" metnini rozetlere aktar; ilk uygulama max CAN'ı belirler.
+## Bayrakta yalnız CAN (orta değer) büyük göstergede gösterilir.
+func _apply_stat_text(text: String) -> void:
+	var p := text.split("/")
+	if p.size() < 3:
+		return
+	var hp := int(p[1])
+	if _is_flag:
+		if _flag_hp_label:
+			_flag_hp_label.text = str(maxi(0, hp))
+		return
+	if _max_hp < 0:
+		_max_hp = hp
+	_badges.set_stats(int(p[0]), hp, int(p[2]), _max_hp)
 
 func set_status_text(text: String) -> void:
 	_status_label.text = text
@@ -142,7 +239,7 @@ func hit_flash(dur: float) -> void:
 		sprite.modulate = Color(1.0, 0.35, 0.3)
 		var tw := create_tween()
 		tw.tween_property(sprite, "modulate", Color.WHITE, dur)
-	else:
+	elif _mat != null:
 		_mat.set_shader_parameter("emission_color", Color(1.0, 0.25, 0.15))
 		_mat.set_shader_parameter("emission_strength", 1.8)
 		var tw := create_tween()
@@ -159,6 +256,8 @@ func die_anim(dur: float) -> Tween:
 	tw.set_parallel(true)
 	tw.tween_property(self, "scale", Vector3.ONE * 0.01, dur) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
-	if _label:
-		tw.tween_property(_label, "modulate:a", 0.0, dur * 0.6)
+	if _badge_sprite:
+		tw.tween_property(_badge_sprite, "modulate:a", 0.0, dur * 0.6)
+	if _flag_hp_label:
+		tw.tween_property(_flag_hp_label, "modulate:a", 0.0, dur * 0.6)
 	return tw

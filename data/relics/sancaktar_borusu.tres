@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="RelicData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/logic/relic_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sancaktar_borusu"
+ad = "Sancaktar Borusu"
+aciklama = "Borunun sesi safları harekete geçirir. Tur başı +1 Mevzi (AP)."
+fiyat = 19
+mevzi_bonus = 1

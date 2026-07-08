@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="TraitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/logic/trait_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"alev_yemini"
+ad = "Alev Yemini"
+aciklama = "Vuruşta hedefe 2 Yanık uygular."
+tetik = 1
+statu = &"yanik"
+statu_deger = 2
+hedef = 1

@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="RelicData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/logic/relic_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"karanlik_zirh_parcasi"
+ad = "Karanlık Zırh Parçası"
+aciklama = "Kararmış bir zırhtan kopan parça. Savaş başı tüm birimlere 6 Kalkan."
+fiyat = 17
+baslangic_kalkan = 6

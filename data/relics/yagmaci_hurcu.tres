@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="RelicData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/logic/relic_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"yagmaci_hurcu"
+ad = "Yağmacı Hurcu"
+aciklama = "Talan artıklarıyla dolu eski bir hurç. Her zaferde +8 altın ve +1 Güç."
+fiyat = 15
+global_ek_guc = 1
+altin_bonus = 8

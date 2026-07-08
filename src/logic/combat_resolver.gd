@@ -40,28 +40,47 @@ static func resolve(units: Array, ctx: Dictionary = {}, _seed: int = 0) -> Dicti
 	var state := {"diken": {}}   # savaş içi tüketilen zemin (ctx MUTASYONA UĞRAMAZ)
 	_deploy_procs(units, ctx, events)   # ON_DEPLOY tabyaları (Kalkan Duruşu)
 	var round_no := 0
-	while _side_alive(units, SIDE_PLAYER) and _side_alive(units, SIDE_ENEMY) \
-			and round_no < BoardDefs.MAX_ROUND:
+	while not _battle_over(units) and round_no < BoardDefs.MAX_ROUND:
 		round_no += 1
-		events.append({"t": "ROUND_START", "round": round_no})
-		_round_start_effects(units, ctx, round_no, events)   # zemin, DoT, aura, birikim, pus (§3.3)
-		if _battle_over(units):
-			break
-		for unit: CombatUnit in _activation_order(units):
-			if not unit.alive:
-				continue
-			_activate(unit, units, ctx, state, events)
-			if _battle_over(units):
-				break
+		events.append_array(resolve_round(units, ctx, round_no, state))
 	var kazanan := _decide_winner(units)
 	events.append({"t": "END", "kazanan": kazanan})
 	return {"events": events, "kazanan": kazanan, "rounds": round_no, "units": units}
+
+## TEK TUR çöz (§B.0/3 tur-tur döngüsü için): tur başı efektleri + aktivasyonlar.
+## `state` diken gibi savaş-boyu tüketilenleri taşır (turlar arası korunmalı).
+## Tur-tur modda battle_screen bunu her tur çağırır, aralarda AP planlaması yapar.
+static func resolve_round(units: Array, ctx: Dictionary, round_no: int, state: Dictionary) -> Array:
+	var events: Array = []
+	events.append({"t": "ROUND_START", "round": round_no})
+	_round_start_effects(units, ctx, round_no, events)   # zemin, DoT, aura, birikim, pus (§3.3)
+	if _battle_over(units):
+		return events
+	for unit: CombatUnit in _activation_order(units):
+		if not unit.alive:
+			continue
+		_activate(unit, units, ctx, state, events)
+		if _battle_over(units):
+			break
+	return events
+
+## ON_DEPLOY tabyalarını yalnız verilen (yeni yerleştirilen) birimler için tetikle
+## (§B.0/3: tur-tur deploy). Tüm-birim varyantı için _deploy_procs kullanılır.
+static func deploy_procs_for(new_units: Array, all_units: Array, ctx: Dictionary) -> Array:
+	var events: Array = []
+	for unit: CombatUnit in _sorted_by_pos(new_units):
+		for t: TraitData in unit.traits:
+			if t.tetik == TraitData.Tetik.ON_DEPLOY:
+				events.append({"t": "TRAIT_PROC", "unit_id": unit.uid, "trait_id": t.id, "ad": t.ad})
+				if t.statu != &"":
+					_apply_status(unit, t.statu, t.statu_deger, events)
+	return events
 
 # ------------------------------------------------------------- tur mekaniği
 
 ## HIZ azalan; eşitlik: alt satır (küçük y), sonra küçük kolon, sonra uid (§3.3)
 static func _activation_order(units: Array) -> Array:
-	var order := units.filter(func(u: CombatUnit) -> bool: return u.alive)
+	var order := units.filter(func(u: CombatUnit) -> bool: return u.alive and not u.is_flag)
 	order.sort_custom(func(a: CombatUnit, b: CombatUnit) -> bool:
 		if a.spd != b.spd: return a.spd > b.spd
 		if a.coord.y != b.coord.y: return a.coord.y < b.coord.y
@@ -81,12 +100,12 @@ static func _deploy_procs(units: Array, ctx: Dictionary, events: Array) -> void:
 static func _round_start_effects(units: Array, ctx: Dictionary, round_no: int, events: Array) -> void:
 	# 0) Zemin hasarı: Lav üstünde duran tur başı 3 hasar (§7)
 	for unit: CombatUnit in _sorted_by_pos(units):
-		if unit.alive and _terrain_at(ctx, unit.coord) == &"lav":
+		if unit.alive and not unit.is_flag and _terrain_at(ctx, unit.coord) == &"lav":
 			events.append({"t": "STATUS_DAMAGE", "unit_id": unit.uid, "status": "lav", "damage": 3})
 			_direct_damage(unit, 3, units, ctx, events)
 	# 1) DoT: Zehir (X hasar, X→X−1) ve Yanık (sabit X, Y tur) — §6
 	for unit: CombatUnit in _sorted_by_pos(units):
-		if not unit.alive:
+		if not unit.alive or unit.is_flag:
 			continue
 		if unit.zehir > 0:
 			var z_dmg := unit.zehir
@@ -132,7 +151,7 @@ static func _pus_pressure(units: Array, ctx: Dictionary, round_no: int, events: 
 		return
 	var damage := (round_no - BoardDefs.SUDDEN_DEATH_ROUND + 1) * 2
 	for unit: CombatUnit in _sorted_by_pos(units):
-		if not unit.alive:
+		if not unit.alive or unit.is_flag:
 			continue
 		unit.hp -= damage
 		events.append({"t": "PUS_DAMAGE", "unit_id": unit.uid, "damage": damage})
@@ -158,10 +177,19 @@ static func _activate(unit: CombatUnit, units: Array, ctx: Dictionary, state: Di
 static func _act_melee(unit: CombatUnit, units: Array, ctx: Dictionary, state: Dictionary, events: Array) -> void:
 	var target := _pick_adjacent_target(unit, units)
 	if target == null and unit.kok == 0:
-		var nearest := _nearest_enemy(unit, units)
-		if nearest == null:
+		# Bayrak varsa düşman bayrağına doğru ilerle (lane-push §B.0/1);
+		# yoksa eski davranış (en yakın düşmana).
+		var goal_coord: Variant = null
+		var flag := _enemy_flag(unit, units)
+		if flag != null:
+			goal_coord = flag.coord
+		else:
+			var nearest := _nearest_enemy(unit, units)
+			if nearest != null:
+				goal_coord = nearest.coord
+		if goal_coord == null:
 			return
-		var step := _greedy_step(unit, nearest.coord, units, ctx)
+		var step := _greedy_step(unit, goal_coord, units, ctx)
 		if step != unit.coord:
 			events.append({"t": "MOVE", "unit_id": unit.uid, "from": unit.coord, "to": step})
 			unit.coord = step
@@ -267,6 +295,11 @@ static func _compute_attack(src: CombatUnit, dst: CombatUnit, units: Array, ctx:
 	# Lanet: ×0.5 Kat (§6)
 	if src.lanet_sure > 0:
 		kat *= 0.5
+	# Relic global pasifleri — yalnız oyuncu tarafı (build motoru §B.9)
+	if src.side == SIDE_PLAYER:
+		for r: RelicData in ctx.get("relics", []):
+			guc += r.global_ek_guc
+			kat *= r.global_kat
 	return int(floor(guc * kat))
 
 static func _terrain_at(ctx: Dictionary, coord: Vector2i) -> StringName:
@@ -432,12 +465,29 @@ static func _side_alive(units: Array, side: int) -> bool:
 			return true
 	return false
 
+## Bayrak varsa: zafer = düşman bayrağını yıkmak (§B.0/1). Bayrak yoksa
+## (saf birim testleri): eski "bir taraf yok oldu" mantığı.
 static func _battle_over(units: Array) -> bool:
+	if _has_flags(units):
+		return not (_flag_alive(units, SIDE_PLAYER) and _flag_alive(units, SIDE_ENEMY))
 	return not (_side_alive(units, SIDE_PLAYER) and _side_alive(units, SIDE_ENEMY))
 
-## Kazanan: ayakta kalan taraf. İkisi de ayaktaysa (MAX_ROUND) toplam HP;
-## eşitlik ve çifte ölüm OYUNCU ALEYHİNE (kaybetmek ilerlemedir, §1.5).
+## Kazanan. Bayraklıysa: düşman bayrağı düştüyse PLAYER, oyuncu bayrağı düştüyse
+## ENEMY; ikisi de ayakta (MAX_ROUND) ise bayrağı daha çok yıpranan kaybeder,
+## çifte ölüm/eşitlik OYUNCU ALEYHİNE (kaybetmek ilerlemedir, §1.5).
 static func _decide_winner(units: Array) -> String:
+	if _has_flags(units):
+		var p := _flag_alive(units, SIDE_PLAYER)
+		var e := _flag_alive(units, SIDE_ENEMY)
+		if p and not e:
+			return "PLAYER"
+		if e and not p:
+			return "ENEMY"
+		if not p and not e:
+			return "ENEMY"
+		var pf := _flag_of(units, SIDE_PLAYER)
+		var ef := _flag_of(units, SIDE_ENEMY)
+		return "PLAYER" if ef.hp < pf.hp else "ENEMY"
 	var p_alive := _side_alive(units, SIDE_PLAYER)
 	var e_alive := _side_alive(units, SIDE_ENEMY)
 	if p_alive and not e_alive:
@@ -453,6 +503,43 @@ static func _decide_winner(units: Array) -> String:
 			if u.side == SIDE_PLAYER: p_hp += u.hp
 			else: e_hp += u.hp
 	return "PLAYER" if p_hp > e_hp else "ENEMY"
+
+# ------------------------------------------------------------- public durum
+
+## Savaş bitti mi (tur-tur mod battle_screen bunu her tur çağırır)
+static func is_over(units: Array) -> bool:
+	return _battle_over(units)
+
+## Kazanan ("PLAYER"/"ENEMY")
+static func winner(units: Array) -> String:
+	return _decide_winner(units)
+
+# ------------------------------------------------------------- bayrak yardımcıları
+
+static func _has_flags(units: Array) -> bool:
+	for u: CombatUnit in units:
+		if u.is_flag:
+			return true
+	return false
+
+static func _flag_alive(units: Array, side: int) -> bool:
+	for u: CombatUnit in units:
+		if u.is_flag and u.side == side and u.alive:
+			return true
+	return false
+
+static func _flag_of(units: Array, side: int) -> CombatUnit:
+	for u: CombatUnit in units:
+		if u.is_flag and u.side == side:
+			return u
+	return null
+
+## Birimin karşı tarafındaki (canlı) bayrak
+static func _enemy_flag(unit: CombatUnit, units: Array) -> CombatUnit:
+	for u: CombatUnit in units:
+		if u.is_flag and u.alive and u.side != unit.side:
+			return u
+	return null
 
 ## Konuma göre deterministik sıralama (y, x, uid) — toplu efektler için
 static func _sorted_by_pos(units: Array) -> Array:

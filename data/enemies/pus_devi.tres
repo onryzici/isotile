@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="PieceData" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/logic/piece_data.gd" id="1"]
+[ext_resource type="Resource" path="res://data/traits/son_nefes.tres" id="2"]
+
+[resource]
+script = ExtResource("1")
+id = &"pus_devi"
+ad = "Pus Devi"
+sinif = 0
+saldiri = 3
+can = 16
+hiz = 2
+zirh = 2
+mevzi_maliyeti = 3
+base_traits = [ExtResource("2")]
+tier = 3

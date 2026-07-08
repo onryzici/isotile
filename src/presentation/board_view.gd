@@ -5,8 +5,9 @@ extends Node3D
 
 const TILE_SIZE := 1.0
 const TILE_GAP := 0.05          # bloklar arası ince boşluk (grid hissi)
-const BLOCK_BASE_H := 0.6       # taban blok yüksekliği
+const BLOCK_BASE_H := 0.95      # taban blok yüksekliği (uzun küpler)
 const LEVEL_H := 0.45           # Yükselti başına ek yükseklik
+const ENEMY_BASE_LIFT := 0.85   # düşman kaidesi ana ızgaradan AYRI, yüksek platform
 
 const TOON := preload("res://shaders/toon.gdshader")
 const OUTLINE := preload("res://shaders/outline.gdshader")
@@ -19,10 +20,45 @@ const GRASS_TOP := Color(0.30, 0.36, 0.17)
 const GRASS_ENEMY := Color(0.33, 0.27, 0.15)   # düşman yakası çorak ton
 const DIRT_SIDE := Color(0.10, 0.08, 0.07)
 const NOMANS_TOP := Color(0.28, 0.21, 0.14)    # satır 3: toprak/çorak şerit
+const PLAYER_BASE_TOP := Color(0.20, 0.24, 0.32)   # satır 0: oyuncu kaidesi (taş-mavi)
+const ENEMY_BASE_TOP := Color(0.34, 0.18, 0.15)    # son satır: düşman kaidesi (kızıl çorak)
 
 var height_map: Dictionary = {}              # Vector2i -> int (0 = düz)
 var _overlays: Dictionary = {}               # Vector2i -> MeshInstance3D
 var _terrain_nodes: Dictionary = {}          # Vector2i -> Node3D
+var _tile_mi: Dictionary = {}                # Vector2i -> MeshInstance3D (intro anim)
+
+# ---- Kurulum (intro) animasyonu: tile'lar void'den dalga hâlinde yükselir ----
+const INTRO_STEP := 0.09      # köşegen dalga adımı (coord başına gecikme)
+const INTRO_TILE_DUR := 0.75  # tek tile'ın oturma süresi
+const INTRO_DROP := 7.0       # başlangıç aşağı ofseti
+
+## Bir tile/birim koordinatının animasyon gecikmesi (köşegen sweep, ön→arka)
+func intro_delay(coord: Vector2i) -> float:
+	return float(coord.x + coord.y) * INTRO_STEP
+
+## Tüm tile'ları aşağıdan yukarı, köşegen dalga hâlinde oturt (BACK overshoot).
+func play_intro() -> void:
+	for coord: Vector2i in _tile_mi:
+		var mi: MeshInstance3D = _tile_mi[coord]
+		var target: Vector3 = mi.position
+		mi.position = Vector3(target.x, target.y - INTRO_DROP, target.z)
+		mi.scale = Vector3(0.82, 0.82, 0.82)
+		var d := intro_delay(coord)
+		var tw := mi.create_tween()
+		tw.set_parallel(true)
+		tw.tween_property(mi, "position", target, INTRO_TILE_DUR) \
+			.set_delay(d).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.tween_property(mi, "scale", Vector3.ONE, INTRO_TILE_DUR * 0.85) \
+			.set_delay(d).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	# terrain efektleri (lav/diken/pus) tile'ıyla birlikte pop
+	for coord: Vector2i in _terrain_nodes:
+		var node: Node3D = _terrain_nodes[coord]
+		node.scale = Vector3.ZERO
+		var tw := node.create_tween()
+		tw.tween_property(node, "scale", Vector3.ONE, 0.35) \
+			.set_delay(intro_delay(coord) + INTRO_TILE_DUR * 0.5) \
+			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 func _make_tile_material(top: Color) -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
@@ -44,29 +80,37 @@ func build(heights: Dictionary = {}) -> void:
 			var coord := Vector2i(col, row)
 			_build_tile(coord)
 
+## Ana ızgara DÜZ (merdiven yok). Sadece en arka satır = düşman kaidesi, ayrı
+## yüksek platform. Salt görsel — combat yükselti bonusu ctx heights'tan gelir.
+func _base_offset(coord: Vector2i) -> float:
+	if coord.y == BoardDefs.ROWS - 1:
+		return ENEMY_BASE_LIFT
+	return 0.0
+
 func _build_tile(coord: Vector2i) -> void:
 	var h: int = height_map.get(coord, 0)
-	var block_h := BLOCK_BASE_H + h * LEVEL_H
+	var block_h := BLOCK_BASE_H + h * LEVEL_H + _base_offset(coord)
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3(TILE_SIZE - TILE_GAP, block_h, TILE_SIZE - TILE_GAP)
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
-	# Satıra göre taban renk + tile başına deterministik ton kırılması
-	# (aynı koordinat = aynı ton; el döşemesi hissi)
 	var top := GRASS_TOP
-	if coord.y == BoardDefs.NOMANS_ROW:
+	if coord.y == BoardDefs.ROWS - 1:
+		top = ENEMY_BASE_TOP
+	elif coord.y == BoardDefs.NOMANS_ROW:
 		top = NOMANS_TOP
 	elif coord.y in BoardDefs.ENEMY_ROWS:
 		top = GRASS_TOP.lerp(GRASS_ENEMY, 0.7)
 	var hash_v := absi((coord.x * 73856093) ^ (coord.y * 19349663))
-	var tint := 0.88 + float(hash_v % 100) / 100.0 * 0.2
+	var tint := 0.9 + float(hash_v % 100) / 100.0 * 0.16
 	mi.material_override = _make_tile_material(top * tint)
+	mi.material_override.set_shader_parameter("is_ground", true)
 	var base := coord_to_world(coord)
 	mi.position = Vector3(base.x, block_h * 0.5, base.z)
 	mi.name = "Tile_%s" % BoardDefs.coord_name(coord)
 	add_child(mi)
+	_tile_mi[coord] = mi
 
-	# Fare tıklaması için collision (deployment raycast'i coord meta'sını okur)
 	var body := StaticBody3D.new()
 	body.position = mi.position
 	body.set_meta("coord", coord)
@@ -88,7 +132,7 @@ func coord_to_world(coord: Vector2i) -> Vector3:
 
 ## Tile üst yüzeyinin y'si (birim/overlay yerleşimi için)
 func tile_top_y(coord: Vector2i) -> float:
-	return BLOCK_BASE_H + height_map.get(coord, 0) * LEVEL_H
+	return BLOCK_BASE_H + height_map.get(coord, 0) * LEVEL_H + _base_offset(coord)
 
 ## Overlay aç/kapa. color örn: yeşil deployment, kırmızı telegraph.
 func set_overlay(coord: Vector2i, color: Color, visible_: bool = true) -> void:
@@ -143,20 +187,52 @@ func set_terrain(coord: Vector2i, type: StringName) -> void:
 			# akışkan mor sis girdapları
 			root.add_child(_make_slab(Color(0.08, 0.06, 0.11), Color(0.5, 0.28, 0.75), 0.7, 2.2, 0.44, 0.4))
 		&"diken":
-			for offset in [Vector3(-0.2, 0, -0.15), Vector3(0.15, 0, 0.1), Vector3(-0.05, 0, 0.22)]:
-				var spike := MeshInstance3D.new()
-				var cone := CylinderMesh.new()
-				cone.top_radius = 0.0
-				cone.bottom_radius = 0.07
-				cone.height = 0.3
-				spike.mesh = cone
-				var mat := StandardMaterial3D.new()
-				mat.albedo_color = Color(0.35, 0.28, 0.2)
-				spike.material_override = mat
-				spike.position = offset + Vector3(0, 0.15, 0)
-				root.add_child(spike)
+			root.add_child(_make_spikes())
 	add_child(root)
 	_terrain_nodes[coord] = root
+
+## Stilize diken tuzağı: koyu taban plakası + cel-shaded, outline'lı sivri kaya
+## şardları (tehlike kızılı emissive). Eski düz kahve koniler yerine.
+func _spike_mat(col: Color, emis: float) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = TOON
+	m.set_shader_parameter("top_color", col)
+	m.set_shader_parameter("use_side_split", false)
+	m.set_shader_parameter("mottle_strength", 0.2)
+	m.set_shader_parameter("emission_color", Color(0.9, 0.24, 0.16))
+	m.set_shader_parameter("emission_strength", emis)
+	var outline := ShaderMaterial.new()
+	outline.shader = OUTLINE
+	outline.set_shader_parameter("grow", 0.03)
+	m.next_pass = outline
+	return m
+
+func _make_spikes() -> Node3D:
+	var grp := Node3D.new()
+	# koyu taban (şardların çıktığı çatlamış zemin)
+	var slab := _make_slab(Color(0.10, 0.06, 0.06), Color(0.85, 0.22, 0.12), 0.9, 3.4, 0.6, 0.0)
+	grp.add_child(slab)
+	# sivri şard demeti — farklı boy/eğim/renk (stilize)
+	var shards := [
+		{"p": Vector3(-0.18, 0, -0.14), "h": 0.42, "r": 0.10, "tilt": Vector3(6, 20, -8)},
+		{"p": Vector3(0.16, 0, 0.08), "h": 0.34, "r": 0.09, "tilt": Vector3(-5, -30, 7)},
+		{"p": Vector3(-0.02, 0, 0.20), "h": 0.30, "r": 0.08, "tilt": Vector3(4, 60, -4)},
+		{"p": Vector3(0.22, 0, -0.18), "h": 0.24, "r": 0.07, "tilt": Vector3(-8, 120, 10)},
+		{"p": Vector3(-0.24, 0, 0.16), "h": 0.20, "r": 0.06, "tilt": Vector3(7, -80, -6)},
+	]
+	for s: Dictionary in shards:
+		var spike := MeshInstance3D.new()
+		var cone := CylinderMesh.new()
+		cone.top_radius = 0.0
+		cone.bottom_radius = s["r"]
+		cone.height = s["h"]
+		cone.radial_segments = 5   # köşeli (kristal) siluet
+		spike.mesh = cone
+		spike.material_override = _spike_mat(Color(0.34, 0.30, 0.33), 0.5)
+		spike.position = s["p"] + Vector3(0, s["h"] * 0.5, 0)
+		spike.rotation_degrees = s["tilt"]
+		grp.add_child(spike)
+	return grp
 
 func clear_terrain(coord: Vector2i) -> void:
 	if _terrain_nodes.has(coord):

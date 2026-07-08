@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="PieceData" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://src/logic/piece_data.gd" id="1"]
+[ext_resource type="Resource" path="res://data/traits/sargi.tres" id="2"]
+[ext_resource type="Resource" path="res://data/traits/kutsal_bag.tres" id="3"]
+
+[resource]
+script = ExtResource("1")
+id = &"rahip"
+ad = "Rahip"
+sinif = 2
+saldiri = 1
+can = 8
+hiz = 5
+mevzi_maliyeti = 2
+base_traits = [ExtResource("2"), ExtResource("3")]
+etiketler = [&"Kutsal"]
+tier = 2
+mesh_id = &""
+starter = false
+fiyat = 9

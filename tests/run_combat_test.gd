@@ -21,6 +21,7 @@ func _init() -> void:
 	_test_terrain_duvar_dolasma()
 	_test_full_battle_and_determinism()
 	_test_pus_pressure_breaks_stall()
+	_test_flag_victory()
 	if failures == 0:
 		print("\n=== TÜM TESTLER GEÇTİ ===")
 	else:
@@ -313,3 +314,20 @@ func _print_battle_log(result: Dictionary) -> void:
 				print("    PUS → %s: −%d" % [names[e["unit_id"]], e["damage"]])
 			"DEATH":
 				print("    ☠ %s öldü" % names[e["unit_id"]])
+
+## Bayrak-yıkma zafer koşulu + kalıcı bayrak (§B.0/1-2)
+func _test_flag_victory() -> void:
+	print("\n[Bayrak-yıkma zafer koşulu — §B.0/1]")
+	var hero := _make_unit(5, 20, 5, PieceData.Sinif.MELEE, 0, Vector2i(2, 3), 1)
+	var pflag := CombatUnit.make_flag(0, Vector2i(2, 0), 30, 2)
+	var eflag := CombatUnit.make_flag(1, Vector2i(2, 4), 8, 3)
+	var r := CombatResolver.resolve([hero, pflag, eflag], {}, 1)
+	_check(r["kazanan"] == "PLAYER", "oyuncu düşman bayrağını yıktı")
+	_check(not eflag.alive, "düşman bayrağı düştü")
+	_check(pflag.alive and pflag.hp == 30, "oyuncu bayrağı sağlam kaldı")
+	# Determinizm
+	var r2 := CombatResolver.resolve([
+		_make_unit(5, 20, 5, PieceData.Sinif.MELEE, 0, Vector2i(2, 3), 1),
+		CombatUnit.make_flag(0, Vector2i(2, 0), 30, 2),
+		CombatUnit.make_flag(1, Vector2i(2, 4), 8, 3)], {}, 1)
+	_check(r["events"].size() == r2["events"].size(), "aynı kurulum = aynı event sayısı")

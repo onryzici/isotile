@@ -49,6 +49,33 @@ const DEFS := {
 		"heights": {},
 		"gold": 60,
 	},
+	# 2. bölge — yeni düşman havuzu
+	&"orta3": {
+		"enemies": {Vector2i(0, 3): &"golge_okcu", Vector2i(5, 3): &"golge_okcu",
+			Vector2i(2, 3): &"lanetli_sovalye", Vector2i(3, 4): &"kemik_cigligi"},
+		"terrain": {Vector2i(2, 2): &"lav", Vector2i(3, 2): &"pus", Vector2i(0, 1): &"kutsal"},
+		"heights": {Vector2i(2, 3): 1},
+		"gold": 24,
+	},
+	&"elit2": {
+		"enemies": {Vector2i(1, 3): &"pus_devi", Vector2i(4, 3): &"pus_devi",
+			Vector2i(2, 4): &"golge_okcu", Vector2i(3, 4): &"golge_okcu",
+			Vector2i(2, 3): &"kemik_cigligi"},
+		"terrain": {Vector2i(0, 2): &"diken", Vector2i(5, 2): &"diken",
+			Vector2i(2, 2): &"pus", Vector2i(3, 2): &"pus"},
+		"heights": {Vector2i(2, 3): 1, Vector2i(3, 3): 1},
+		"gold": 45,
+	},
+	&"boss2": {
+		"enemies": {Vector2i(2, 3): &"pus_devi", Vector2i(3, 3): &"lanetli_sovalye",
+			Vector2i(1, 4): &"golge_okcu", Vector2i(4, 4): &"golge_okcu",
+			Vector2i(0, 3): &"kemik_cigligi", Vector2i(5, 3): &"kemik_cigligi",
+			Vector2i(2, 4): &"lanetli_sovalye"},
+		"terrain": {Vector2i(1, 2): &"lav", Vector2i(4, 2): &"lav",
+			Vector2i(2, 2): &"pus", Vector2i(3, 2): &"pus", Vector2i(2, 1): &"kutsal"},
+		"heights": {Vector2i(2, 4): 1, Vector2i(3, 4): 1},
+		"gold": 75,
+	},
 }
 
 ## Bölge haritası şablonu (§2): alttan üste katmanlar; katmandaki
@@ -60,7 +87,21 @@ const MAP_TEMPLATE := [
 	[{"type": &"elit", "enc": &"elit", "ad": "ELİT"}],
 	[{"type": &"dukkan", "ad": "Dükkan"}],
 	[{"type": &"boss", "enc": &"boss", "ad": "BOSS"}],
+	# 2. bölge — Kemik Bataklığı
+	[{"type": &"savas", "enc": &"orta3", "ad": "Savaş"}, {"type": &"dukkan", "ad": "Dükkan"}],
+	[{"type": &"olay", "ad": "Olay"}, {"type": &"elit", "enc": &"elit2", "ad": "ELİT"}],
+	[{"type": &"dukkan", "ad": "Dükkan"}],
+	[{"type": &"boss", "enc": &"boss2", "ad": "BOSS"}],
 ]
+
+## Düşman bayrağı CAN'ı (§B.0/1) — zorlukla ölçeklenir
+const FLAG_HP := {
+	&"kolay": 16, &"orta": 20, &"orta2": 22, &"elit": 30, &"boss": 45,
+	&"orta3": 26, &"elit2": 34, &"boss2": 55,
+}
 
 static func get_def(id: StringName) -> Dictionary:
 	return DEFS.get(id, DEFS[&"orta"])
+
+static func flag_hp(id: StringName) -> int:
+	return FLAG_HP.get(id, 20)
