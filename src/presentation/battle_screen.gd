@@ -63,6 +63,7 @@ var _player_flag_view: PieceView
 var _enemy_flag_view: PieceView
 var _battle_player_flag: CombatUnit    # savaş sonu kalan CAN'ı okumak için
 var _selected := -1
+var _hand: HandCursor                  # deployment "tanrı eli" (grab/drop animasyonu)
 var _hover: Variant = null             # Vector2i veya null
 var _phase := Phase.DEPLOY
 var _telegraph: Dictionary = {}        # Vector2i -> Color (düşman niyeti §11)
@@ -87,6 +88,9 @@ func _ready() -> void:
 	# Görsel doğrulama/CI: --autobattle argümanıyla otomatik diz + savaş
 	if "--autobattle" in OS.get_cmdline_user_args():
 		_debug_autobattle.call_deferred()
+	# El (grab) görsel doğrulaması: karttan seçimi kodla tetikle
+	if "--handtest" in OS.get_cmdline_user_args():
+		(func() -> void: _on_card_pressed(0)).call_deferred()
 
 # ------------------------------------------------------------------ kurulum
 
@@ -262,9 +266,12 @@ func _make_flag_view(coord: Vector2i, side_blue: bool, hp: int) -> PieceView:
 	var view := PieceView.new()
 	add_child(view)
 	view.setup_flag(side_blue, hp)
-	var base := board.coord_to_world(coord)
-	view.position = Vector3(base.x, board.tile_top_y(coord), base.z)
-	_intro_pop(view, coord)
+	# Oyuncu bayrağı GÖRSELDE ön kaide sırasında (satır −1) durur;
+	# mantık koordinatı (satır 0) değişmez — determinizm/hedefleme aynı.
+	var vis_coord := Vector2i(coord.x, -1) if side_blue else coord
+	var base := board.coord_to_world(vis_coord)
+	view.position = Vector3(base.x, board.tile_top_y(vis_coord), base.z)
+	_intro_pop(view, vis_coord)
 	return view
 
 func _setup_ui() -> void:
@@ -280,6 +287,8 @@ func _setup_ui() -> void:
 	ui.battle_pressed.connect(_on_end_turn)
 	ui.commander_pressed.connect(_on_commander)
 	ui.restart_pressed.connect(func(): EventBus.return_to_map.emit(_last_won))
+	_hand = HandCursor.new()
+	add_child(_hand)
 
 # ------------------------------------------------------------------ girdi
 
@@ -335,13 +344,52 @@ func _update_hover(pos: Vector2) -> void:
 		return
 	_hover = coord
 	_refresh_overlays()
+	_refresh_breakdown()
+
+## Yerleşik bir oyuncu birimi üzerine gelince canlı Güç×Kat dökümünü göster (§19).
+## Önizleme _build_units() üzerinden — sinerji/zemin/relic gerçek savaşla aynı.
+func _refresh_breakdown() -> void:
+	if _hover == null or _index_at(_hover) < 0:
+		ui.hide_breakdown()
+		return
+	var built := _build_units()
+	var hovered: CombatUnit = null
+	for u: CombatUnit in built["units"]:
+		if not u.is_flag and u.side == CombatResolver.SIDE_PLAYER and u.coord == _hover:
+			hovered = u
+			break
+	if hovered == null:
+		ui.hide_breakdown()
+		return
+	var bd := CombatResolver.compute_breakdown(hovered, null, built["units"], _ctx())
+	ui.show_breakdown(hovered.ad, bd)
 
 # ------------------------------------------------------------------ deployment akışı
 
 func _on_card_pressed(index: int) -> void:
 	_selected = -1 if _selected == index else index
 	ui.set_selected(_selected)
+	if _selected >= 0:
+		_grab_selected()
+	else:
+		_hand.cancel()
 	_refresh_overlays()
+
+## Seçili birim için "tanrı eli" kavrama animasyonunu başlat
+func _grab_selected() -> void:
+	if _selected < 0:
+		return
+	var piece: PieceData = _squad[_selected]
+	var tex := _carry_texture(piece)
+	var tint: Color = PieceView.CLASS_COLORS.get(piece.class_key(), Color.GRAY)
+	_hand.grab(tex, tint, get_viewport().get_mouse_position())
+
+## Taşıma önizlemesi için birim dokusu (mesh_id sprite'ı) — kapsülse null
+func _carry_texture(piece: PieceData) -> Texture2D:
+	var path := _sprite_path(piece)
+	if path != "" and ResourceLoader.exists(path):
+		return load(path)
+	return null
 
 func _index_at(coord: Vector2i) -> int:
 	for i in _coord_by_index:
@@ -353,21 +401,41 @@ func _try_place(coord: Vector2i) -> void:
 	var piece: PieceData = _squad[_selected]
 	if not deployment.place(piece.mevzi_maliyeti, coord):
 		return
-	var view := PieceView.new()
-	add_child(view)
-	view.setup(piece.class_key(), piece.stat_text(), 1.0, _sprite_path(piece))
+	var idx := _selected
+	# El hedefe gidip birimi "bırakınca" gerçek PieceView sahnede pop eder.
 	var base := board.coord_to_world(coord)
-	view.position = Vector3(base.x, board.tile_top_y(coord), base.z)
-	_coord_by_index[_selected] = coord
-	_views_by_index[_selected] = view
-	ui.set_card_deployed(_selected, true)
+	var rest := Vector3(base.x, board.tile_top_y(coord), base.z)
+	var drop := func() -> void:
+		var view := PieceView.new()
+		add_child(view)
+		view.setup(piece.class_key(), piece.stat_text(), 1.0, _sprite_path(piece))
+		view.position = rest
+		_drop_in(view, rest)
+		_coord_by_index[idx] = coord
+		_views_by_index[idx] = view
+		ui.set_card_deployed(idx, true)
+		EventBus.piece_deployed.emit(piece.id, coord)
+		AudioDirector.play_sfx(&"deploy_clunk")   # ses dosyası bağlanınca çalar (§20)
+		_update_telegraph()
+	var tile_screen := camera_rig.camera.unproject_position(rest + Vector3(0, 0.5, 0))
+	_hand.release(tile_screen, drop)
 	ui.set_mevzi(deployment.mevzi)
-	EventBus.piece_deployed.emit(piece.id, coord)
 	EventBus.mevzi_changed.emit(deployment.mevzi)
-	AudioDirector.play_sfx(&"deploy_clunk")   # ses dosyası bağlanınca çalar (§20)
 	ui.battle_button.disabled = false
-	_deselect()
-	_update_telegraph()
+	# El bırakma animasyonunu yürütür; seçim durumunu sessizce temizle
+	_selected = -1
+	ui.set_selected(-1)
+	_refresh_overlays()
+
+## Yerleştirilen birim yukarıdan tile'a "düşer" (el bırakmasıyla senkron)
+func _drop_in(view: PieceView, rest: Vector3) -> void:
+	view.position = rest + Vector3(0, 0.7, 0)
+	view.scale = Vector3.ONE * 1.12
+	var tw := view.create_tween().set_parallel(true)
+	tw.tween_property(view, "position", rest, 0.22) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(view, "scale", Vector3.ONE, 0.22) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 func _remove_piece(coord: Vector2i) -> int:
 	var index := _index_at(coord)
@@ -391,6 +459,7 @@ func _pickup(coord: Vector2i) -> void:
 	if index >= 0:
 		_selected = index
 		ui.set_selected(index)
+		_grab_selected()   # yerleşik birimi de el kaldırır (yeniden konumla)
 		_refresh_overlays()
 
 func _recall(coord: Vector2i) -> void:
@@ -400,6 +469,8 @@ func _recall(coord: Vector2i) -> void:
 func _deselect() -> void:
 	_selected = -1
 	ui.set_selected(-1)
+	if _hand:
+		_hand.cancel()
 	_refresh_overlays()
 
 ## Overlay önceliği: sarı hover > kırmızı telegraph > yeşil geçerli tile
@@ -520,6 +591,7 @@ func _on_end_turn() -> void:
 	_deselect()
 	_telegraph.clear()
 	board.clear_overlays()
+	ui.hide_breakdown()
 	for view: PieceView in _enemy_views.values():
 		view.set_status_text("")
 	ui.enter_battle_mode()

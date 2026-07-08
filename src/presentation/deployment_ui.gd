@@ -97,8 +97,10 @@ func build(squad: Array) -> void:
 	_round_label = turn_chip.get_child(1)
 	_round_label.text = "1"
 	right.add_child(turn_chip)
-	for ic: Texture2D in [IC_MAP, IC_BOOK, IC_MENU]:
-		right.add_child(_make_icon(ic))
+	# İşlevsel menü ikonları: sefer durumu · kılavuz · menü
+	right.add_child(_make_icon_button(IC_MAP, _open_status, "Sefer Durumu"))
+	right.add_child(_make_icon_button(IC_BOOK, _open_codex, "Kılavuz"))
+	right.add_child(_make_icon_button(IC_MENU, _open_menu, "Menü"))
 
 	_hint = Label.new()
 	_hint.text = "Karttan birim seç → yeşil tile'a tıkla  •  Yerleşmiş birime tıkla: taşı  •  Sağ tık: geri al  •  Q/E: kamera, tekerlek: zoom"
@@ -262,16 +264,374 @@ func _make_chip(icon: Texture2D, tint: Color, font_size: int = 20) -> HBoxContai
 	box.add_child(lbl)
 	return box
 
-## Sağ menü ikonu (dekoratif — harita/kitap/menü)
-func _make_icon(icon: Texture2D) -> TextureRect:
-	var tr := TextureRect.new()
-	tr.texture = icon
-	tr.custom_minimum_size = Vector2(26, 26)
-	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	tr.modulate = Color(0.72, 0.67, 0.57, 0.8)
-	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	return tr
+## Sağ menü ikonu — tıklanabilir buton (harita/kitap/menü overlay'lerini açar)
+func _make_icon_button(icon: Texture2D, cb: Callable, tip: String) -> Button:
+	var b := Button.new()
+	b.icon = icon
+	b.tooltip_text = tip
+	b.focus_mode = Control.FOCUS_NONE
+	b.expand_icon = true
+	b.custom_minimum_size = Vector2(32, 32)
+	# Arka plan yok — hover'da SADECE ikon rengi değişir (kutu/opaklık gelmez)
+	var empty := StyleBoxEmpty.new()
+	for state in ["normal", "hover", "pressed", "focus"]:
+		b.add_theme_stylebox_override(state, empty)
+	b.add_theme_color_override("icon_normal_color", Color(0.70, 0.65, 0.55))
+	b.add_theme_color_override("icon_hover_color", Color(1.0, 0.9, 0.6))
+	b.add_theme_color_override("icon_pressed_color", Color(1.0, 0.82, 0.45))
+	b.pressed.connect(cb)
+	return b
+
+# ------------------------------------------------------------- üst menü overlay'leri
+
+var _modal: Control
+
+## ESC → açık overlay'i kapat
+func _input(event: InputEvent) -> void:
+	if _modal and event is InputEventKey and event.pressed and not event.echo \
+			and event.keycode == KEY_ESCAPE:
+		_close_modal()
+		get_viewport().set_input_as_handled()
+
+func _close_modal() -> void:
+	if _modal and is_instance_valid(_modal):
+		_modal.queue_free()
+	_modal = null
+
+## Ortak modal iskeleti: karartıcı + ortalı panel + başlık + kapat (✕).
+## build_body.call(içerik_vbox) ile içerik doldurulur. Dışına tıkla = kapat.
+func _open_modal(title_text: String, min_w: float, build_body: Callable) -> void:
+	_close_modal()
+	_modal = Control.new()
+	_modal.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_modal.mouse_filter = Control.MOUSE_FILTER_STOP
+	_root.add_child(_modal)
+
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.62)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	dim.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			_close_modal())
+	_modal.add_child(dim)
+
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_modal.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(min_w, 0)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	center.add_child(panel)
+
+	var pad := MarginContainer.new()
+	for m in ["left", "right", "top", "bottom"]:
+		pad.add_theme_constant_override("margin_" + m, 22)
+	panel.add_child(pad)
+
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 12)
+	pad.add_child(col)
+
+	var header := HBoxContainer.new()
+	col.add_child(header)
+	var t := Label.new()
+	t.theme_type_variation = "Title"
+	t.text = title_text
+	t.add_theme_font_size_override("font_size", 30)
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(t)
+	var x := Button.new()
+	x.text = "✕"
+	x.focus_mode = Control.FOCUS_NONE
+	x.custom_minimum_size = Vector2(38, 38)
+	x.add_theme_font_size_override("font_size", 18)
+	x.pressed.connect(_close_modal)
+	header.add_child(x)
+
+	var div := _make_divider()
+	div.custom_minimum_size = Vector2(0, DIVIDER_H)
+	col.add_child(div)
+
+	build_body.call(col)
+
+# ---- Menü (duraklat / ayarlar) ----
+
+func _open_menu() -> void:
+	_open_modal("Menü", 360, func(col: VBoxContainer) -> void:
+		_menu_button(col, "▶   Devam Et", _close_modal)
+		var muted := AudioServer.is_bus_mute(0)
+		_menu_button(col, "🔊   Ses: %s" % ("Kapalı" if muted else "Açık"), func() -> void:
+			AudioServer.set_bus_mute(0, not AudioServer.is_bus_mute(0))
+			_open_menu())   # etiketi tazelemek için yeniden çiz
+		_menu_button(col, "⏻   Masaüstüne Çık", func() -> void:
+			get_tree().quit()))
+
+func _menu_button(parent: VBoxContainer, label: String, cb: Callable) -> void:
+	var b := Button.new()
+	b.text = label
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(0, 50)
+	b.add_theme_font_size_override("font_size", 20)
+	b.pressed.connect(cb)
+	parent.add_child(b)
+
+# ---- Kılavuz (codex — metin tabanlı referans) ----
+
+func _open_codex() -> void:
+	_open_modal("Kılavuz", 640, func(col: VBoxContainer) -> void:
+		var scroll := ScrollContainer.new()
+		scroll.custom_minimum_size = Vector2(600, 470)
+		scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		col.add_child(scroll)
+		var body := VBoxContainer.new()
+		body.add_theme_constant_override("separation", 18)
+		body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		scroll.add_child(body)
+
+		_codex_para(body, "Güç × Kat",
+			"Her vuruşun ham hasarı: (SALDIRI + toplam Güç) × tüm Kat çarpanları, "
+			+ "sonra hedefin Zırh'ı düşülür. Güç kaynakları ucuz ve boldur; Kat "
+			+ "kaynakları nadirdir. Kat'ı üst üste yığmak hasarı üstel patlatır — "
+			+ "asıl derinlik doğru komşuluk ve tabya dizilimiyle Kat'ı beslemektir.")
+
+		_codex_list(body, "Statü Efektleri", [
+			["Zehir", "Tur başı X hasar, sonra X bir azalır. Sayaç toplanır."],
+			["Yanık", "Y tur boyunca tur başı sabit X hasar. Süre yenilenir."],
+			["Sersem", "Bir aktivasyon atlatır. Süre toplanır."],
+			["Kök", "Hareket edemez ama saldırabilir."],
+			["Zırh", "Her vuruşta gelen hasardan sabit X düşer."],
+			["Kalkan", "CAN'dan önce tükenen geçici HP. Toplanır."],
+			["Güçlenme", "Geçici +Güç veya ×Kat."],
+			["Lanet", "×0.5 Kat zayıflatma. Süre yenilenir."],
+		])
+
+		_codex_list(body, "Zemin & Engeller", [
+			["Duvar", "Hareketi ve görüşü bloklar. Melee etrafından dolaşır."],
+			["Lav", "Üstünde biten birim tur başı 3 hasar alır."],
+			["Diken", "Üzerine ilk giren 2 hasar alır, sonra tükenir."],
+			["Kutsal Zemin", "Üstündeki dost +2 Güç."],
+			["Pus Tile", "Üstündeki birim ×0.75 Kat (lanetli sis)."],
+			["Yükselti", "Yüksek zemin: herkese +1 Güç, menzilliye +1 kolon menzil."],
+		])
+
+		var trait_rows: Array = []
+		for tr in Database.get_all("traits"):
+			trait_rows.append([tr.ad, tr.aciklama])
+		if not trait_rows.is_empty():
+			_codex_list(body, "Tabyalar", trait_rows)
+
+		var relic_rows: Array = []
+		for r in Database.get_all("relics"):
+			relic_rows.append([r.ad, r.aciklama])
+		if not relic_rows.is_empty():
+			_codex_list(body, "Yadigarlar", relic_rows))
+
+# ---- Sefer Durumu (harita ikonu) ----
+
+func _open_status() -> void:
+	_open_modal("Sefer Durumu", 560, func(col: VBoxContainer) -> void:
+		var scroll := ScrollContainer.new()
+		scroll.custom_minimum_size = Vector2(520, 430)
+		scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		col.add_child(scroll)
+		var body := VBoxContainer.new()
+		body.add_theme_constant_override("separation", 18)
+		body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		scroll.add_child(body)
+
+		var total_layers: int = Encounters.MAP_TEMPLATE.size()
+		_codex_para(body, "Özet",
+			"Altın: %d\nBayrak CAN: %d / %d\nKatman: %d / %d" % [
+				GameState.gold, GameState.player_flag_hp,
+				GameState.PLAYER_FLAG_MAX + GameState.meta_flag_lv * 5,
+				GameState.layer_index + 1, total_layers])
+
+		var squad_rows: Array = []
+		for i in GameState.squad.size():
+			var p = GameState.squad[i]
+			var hp: int = GameState.squad_hp.get(i, p.can)
+			var traits: String = p.trait_names()
+			var line := "%s • %s • CAN %d/%d" % [
+				p.stat_text(), SINIF_AD[p.sinif], hp, p.can]
+			if traits != "":
+				line += "\nTabya: " + traits
+			squad_rows.append([p.ad, line])
+		_codex_list(body, "Bölük", squad_rows)
+
+		if GameState.relics.is_empty():
+			_codex_para(body, "Yadigarlar", "Henüz yadigar toplanmadı.")
+		else:
+			var relic_rows: Array = []
+			for r in GameState.relics:
+				relic_rows.append([r.ad, r.aciklama])
+			_codex_list(body, "Yadigarlar", relic_rows))
+
+# ---- codex/status ortak içerik yapıcıları ----
+
+## Başlık + tek paragraf açıklama
+func _codex_para(parent: VBoxContainer, heading: String, text: String) -> void:
+	_codex_heading(parent, heading)
+	var l := Label.new()
+	l.text = text
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.add_theme_font_size_override("font_size", 15)
+	l.add_theme_color_override("font_color", UITheme.TEXT)
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	parent.add_child(l)
+
+## Başlık + [ad, açıklama] satır listesi (ad vurgulu, açıklama soluk)
+func _codex_list(parent: VBoxContainer, heading: String, rows: Array) -> void:
+	_codex_heading(parent, heading)
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 9)
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	parent.add_child(list)
+	for row in rows:
+		var entry := VBoxContainer.new()
+		entry.add_theme_constant_override("separation", 1)
+		entry.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		list.add_child(entry)
+		var name_lbl := Label.new()
+		name_lbl.text = str(row[0])
+		name_lbl.add_theme_font_size_override("font_size", 17)
+		name_lbl.add_theme_color_override("font_color", Color(0.92, 0.78, 0.45))
+		entry.add_child(name_lbl)
+		var desc_lbl := Label.new()
+		desc_lbl.text = str(row[1])
+		desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		desc_lbl.add_theme_font_size_override("font_size", 14)
+		desc_lbl.add_theme_color_override("font_color", UITheme.TEXT_DIM)
+		desc_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		entry.add_child(desc_lbl)
+
+func _codex_heading(parent: VBoxContainer, text: String) -> void:
+	var h := Label.new()
+	h.theme_type_variation = "Title"
+	h.text = text
+	h.add_theme_font_size_override("font_size", 21)
+	h.add_theme_color_override("font_color", Color(0.85, 0.65, 0.3))
+	parent.add_child(h)
+
+# ------------------------------------------------------------- canlı Güç×Kat dökümü (§19)
+
+var _breakdown_panel: PanelContainer
+const GUC_COL := Color(0.93, 0.66, 0.28)   # Güç = toplamsal (turuncu)
+const KAT_COL := Color(0.90, 0.38, 0.32)   # Kat = çarpımsal (kızıl)
+
+func hide_breakdown() -> void:
+	if _breakdown_panel and is_instance_valid(_breakdown_panel):
+		_breakdown_panel.queue_free()
+	_breakdown_panel = null
+
+## Bir birimin vuruş hasarını kaynak kaynak göster: (Taban + Güç) × Kat = hasar.
+## bd: CombatResolver.compute_breakdown() çıktısı.
+func show_breakdown(unit_name: String, bd: Dictionary) -> void:
+	hide_breakdown()
+	_breakdown_panel = PanelContainer.new()
+	_breakdown_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_breakdown_panel.set_anchors_and_offsets_preset(
+		Control.PRESET_CENTER_LEFT, Control.PRESET_MODE_MINSIZE)
+	_breakdown_panel.offset_left = 16
+	_breakdown_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_root.add_child(_breakdown_panel)
+
+	var pad := MarginContainer.new()
+	for m in ["left", "right", "top", "bottom"]:
+		pad.add_theme_constant_override("margin_" + m, 14)
+	_breakdown_panel.add_child(pad)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 3)
+	col.custom_minimum_size = Vector2(232, 0)
+	pad.add_child(col)
+
+	var head := Label.new()
+	head.theme_type_variation = "Title"
+	head.text = unit_name
+	head.add_theme_font_size_override("font_size", 20)
+	col.add_child(head)
+	var sub := Label.new()
+	sub.text = "vuruş dökümü"
+	sub.add_theme_font_size_override("font_size", 12)
+	sub.add_theme_color_override("font_color", UITheme.TEXT_DIM)
+	col.add_child(sub)
+	_bd_gap(col, 4)
+
+	# GÜÇ (toplamsal) satırları
+	for line in bd["guc_lines"]:
+		_bd_row(col, str(line[0]), "+%d" % int(line[1]), GUC_COL)
+	_bd_rule(col)
+	_bd_row(col, "Güç", str(int(bd["guc"])), GUC_COL, true)
+
+	# KAT (çarpımsal) satırları — varsa
+	if not bd["kat_lines"].is_empty():
+		_bd_gap(col, 6)
+		for line in bd["kat_lines"]:
+			_bd_row(col, str(line[0]), "×%s" % _fmt_kat(float(line[1])), KAT_COL)
+		_bd_rule(col)
+		_bd_row(col, "Kat", "×%s" % _fmt_kat(float(bd["kat"])), KAT_COL, true)
+
+	# SONUÇ — vuruş başına hasar
+	_bd_gap(col, 8)
+	var result := Label.new()
+	result.text = "Vuruş  =  %d" % int(bd["raw"])
+	result.theme_type_variation = "Title"
+	result.add_theme_font_size_override("font_size", 26)
+	result.add_theme_color_override("font_color", Color(1.0, 0.86, 0.4))
+	result.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(result)
+
+	# KOŞULLU — konuma/hedefe bağlı, henüz aktif olmayan bonuslar
+	if not bd["kosullu"].is_empty():
+		_bd_gap(col, 6)
+		var kh := Label.new()
+		kh.text = "Koşullu"
+		kh.add_theme_font_size_override("font_size", 12)
+		kh.add_theme_color_override("font_color", Color(0.55, 0.7, 0.85))
+		col.add_child(kh)
+		for s in bd["kosullu"]:
+			var l := Label.new()
+			l.text = "• " + str(s)
+			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			l.add_theme_font_size_override("font_size", 12)
+			l.add_theme_color_override("font_color", Color(0.6, 0.7, 0.8, 0.85))
+			l.custom_minimum_size = Vector2(204, 0)
+			col.add_child(l)
+
+func _bd_row(parent: VBoxContainer, label: String, value: String, col: Color, bold: bool = false) -> void:
+	var row := HBoxContainer.new()
+	parent.add_child(row)
+	var l := Label.new()
+	l.text = label
+	l.add_theme_font_size_override("font_size", 15 if bold else 14)
+	l.add_theme_color_override("font_color", col if bold else UITheme.TEXT)
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(l)
+	var v := Label.new()
+	v.text = value
+	v.add_theme_font_size_override("font_size", 16 if bold else 14)
+	v.add_theme_color_override("font_color", col)
+	v.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	row.add_child(v)
+
+func _bd_rule(parent: VBoxContainer) -> void:
+	var r := ColorRect.new()
+	r.color = Color(0.5, 0.45, 0.35, 0.4)
+	r.custom_minimum_size = Vector2(0, 1)
+	parent.add_child(r)
+
+func _bd_gap(parent: VBoxContainer, h: int) -> void:
+	var g := Control.new()
+	g.custom_minimum_size = Vector2(0, h)
+	parent.add_child(g)
+
+## Kat çarpanını kısa göster: 1.5, 0.75, 2 (tam sayıysa noktasız)
+func _fmt_kat(v: float) -> String:
+	if is_equal_approx(v, roundf(v)):
+		return str(int(roundf(v)))
+	return "%.2f" % v
 
 # ------------------------------------------------------------- savaş kaydı widget'ı
 
@@ -352,8 +712,11 @@ func add_log(text: String) -> void:
 		Color(0.9, 0.44, 0.38) if is_death else Color(0.85, 0.81, 0.71))
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_log_box.add_child(l)
+	# queue_free kare sonuna ertelenir, sayaç düşmez — önce remove_child şart
 	while _log_box.get_child_count() > 12:
-		_log_box.get_child(0).queue_free()
+		var old := _log_box.get_child(0)
+		_log_box.remove_child(old)
+		old.queue_free()
 
 ## Toggle → paneli yukarıdan aşağı animasyonla aç/kapa
 func _toggle_log() -> void:

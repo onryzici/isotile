@@ -231,12 +231,27 @@ static func _act_support(unit: CombatUnit, units: Array, events: Array) -> void:
 
 # ------------------------------------------------------------- Güç×Kat hesabı
 
-## Saldırı anındaki canlı Güç×Kat dökümü (§3.6). Balatro çekirdeği:
-## Güç = ATK + dış ek_guc + birikimler + koşullu tabyalar + zemin
-## Kat = dış kat × birikimler × koşullu tabyalar × global etiket bağları × Lanet
+## Saldırı hasarı (§3.6) — dökümün `raw` alanı. Tek matematik kaynağı budur.
 static func _compute_attack(src: CombatUnit, dst: CombatUnit, units: Array, ctx: Dictionary) -> int:
+	return compute_breakdown(src, dst, units, ctx)["raw"]
+
+## Canlı Güç×Kat dökümü (§3.6, §19 — build'i öğreten şey). Balatro çekirdeği:
+## Güç = ATK + dış ek_guc + birikimler + koşullu tabyalar + zemin (toplamsal)
+## Kat = dış kat × birikimler × koşullu tabyalar × etiket bağları × Lanet (çarpımsal)
+##
+## dst == null → hedefe-koşullu tabyalar (Nişan) uygulanmaz, "kosullu" listesine
+## yazılır (deployment önizlemesi için). dst varsa davranış _attack ile birebir.
+## Dönüş: {guc, kat, raw, guc_lines:[[ad,deger]], kat_lines:[[ad,carpan]], kosullu:[String]}
+static func compute_breakdown(src: CombatUnit, dst: CombatUnit, units: Array, ctx: Dictionary) -> Dictionary:
 	var guc := src.atk + src.ek_guc + src.kalici_ek_guc
 	var kat := src.kat * src.kalici_kat
+	var guc_lines: Array = [["Taban SALDIRI", src.atk]]
+	var kat_lines: Array = []
+	var kosullu: Array = []
+	if src.ek_guc != 0: guc_lines.append(["Dış Güç", src.ek_guc])
+	if src.kalici_ek_guc != 0: guc_lines.append(["Birikim (Güç)", src.kalici_ek_guc])
+	if not is_equal_approx(src.kat, 1.0): kat_lines.append(["Dış Kat", src.kat])
+	if not is_equal_approx(src.kalici_kat, 1.0): kat_lines.append(["Birikim (Kat)", src.kalici_kat])
 	var heights: Dictionary = ctx.get("heights", {})
 	for t: TraitData in src.traits:
 		if t.tetik != TraitData.Tetik.PASSIVE:
@@ -245,18 +260,32 @@ static func _compute_attack(src: CombatUnit, dst: CombatUnit, units: Array, ctx:
 			TraitData.Kosul.YOK:
 				guc += t.ek_guc
 				kat *= t.kat
+				if t.ek_guc != 0: guc_lines.append([t.ad, t.ek_guc])
+				if not is_equal_approx(t.kat, 1.0): kat_lines.append([t.ad, t.kat])
 			TraitData.Kosul.HEDEF_AYNI_SATIR_KOLON:
 				if dst != null and (src.coord.x == dst.coord.x or src.coord.y == dst.coord.y):
 					guc += t.ek_guc
 					kat *= t.kat
+					if t.ek_guc != 0: guc_lines.append([t.ad, t.ek_guc])
+					if not is_equal_approx(t.kat, 1.0): kat_lines.append([t.ad, t.kat])
+				else:
+					kosullu.append("%s — aynı satır/kolonda hedefe" % t.ad)
 			TraitData.Kosul.DIS_KOLON:
 				if src.coord.x == 0 or src.coord.x == BoardDefs.COLS - 1:
 					guc += t.ek_guc
 					kat *= t.kat
+					if t.ek_guc != 0: guc_lines.append([t.ad, t.ek_guc])
+					if not is_equal_approx(t.kat, 1.0): kat_lines.append([t.ad, t.kat])
+				else:
+					kosullu.append("%s — en dış kolonda (A/F)" % t.ad)
 			TraitData.Kosul.YUKSEK_ZEMIN:
 				if heights.get(src.coord, 0) > 0:
 					guc += t.ek_guc
 					kat *= t.kat
+					if t.ek_guc != 0: guc_lines.append([t.ad, t.ek_guc])
+					if not is_equal_approx(t.kat, 1.0): kat_lines.append([t.ad, t.kat])
+				else:
+					kosullu.append("%s — yükselti zemininde" % t.ad)
 			TraitData.Kosul.KOMSU_ETIKET_BASINA:
 				var count := 0
 				for ally: CombatUnit in units:
@@ -265,6 +294,10 @@ static func _compute_attack(src: CombatUnit, dst: CombatUnit, units: Array, ctx:
 							and BoardDefs.grid_distance(src.coord, ally.coord) == 1:
 						count += 1
 				guc += t.ek_guc * count
+				if count > 0:
+					guc_lines.append(["%s (×%d)" % [t.ad, count], t.ek_guc * count])
+				else:
+					kosullu.append("%s — bitişik %s başına +%d" % [t.ad, t.kosul_etiket, t.ek_guc])
 			TraitData.Kosul.SAHADA_ETIKET_MIN:
 				pass   # global bağ: aşağıda taraf genelinde işlenir
 	# Global etiket bağları (Kutsal Bağ): sahadaki HERHANGİ bir dost taşıyıcının
@@ -282,25 +315,38 @@ static func _compute_attack(src: CombatUnit, dst: CombatUnit, units: Array, ctx:
 			for u: CombatUnit in units:
 				if u.alive and u.side == src.side and t.kosul_etiket in u.etiketler:
 					field_count += 1
+			applied_bonds[t.id] = true
 			if field_count >= t.kosul_deger:
-				applied_bonds[t.id] = true
 				guc += t.ek_guc
 				kat *= t.kat
+				if t.ek_guc != 0: guc_lines.append([t.ad, t.ek_guc])
+				if not is_equal_approx(t.kat, 1.0): kat_lines.append([t.ad, t.kat])
+			else:
+				kosullu.append("%s — sahada %d+ %s (şu an %d)" % [t.ad, t.kosul_deger, t.kosul_etiket, field_count])
 	# Zemin (§7): Yükselti +1 Güç; Kutsal Zemin +2 Güç; Pus Tile ×0.75 Kat
 	if heights.get(src.coord, 0) > 0:
 		guc += 1
+		guc_lines.append(["Yükselti zemin", 1])
 	match _terrain_at(ctx, src.coord):
-		&"kutsal": guc += 2
-		&"pus": kat *= 0.75
+		&"kutsal":
+			guc += 2
+			guc_lines.append(["Kutsal Zemin", 2])
+		&"pus":
+			kat *= 0.75
+			kat_lines.append(["Pus Tile", 0.75])
 	# Lanet: ×0.5 Kat (§6)
 	if src.lanet_sure > 0:
 		kat *= 0.5
+		kat_lines.append(["Lanet", 0.5])
 	# Relic global pasifleri — yalnız oyuncu tarafı (build motoru §B.9)
 	if src.side == SIDE_PLAYER:
 		for r: RelicData in ctx.get("relics", []):
 			guc += r.global_ek_guc
 			kat *= r.global_kat
-	return int(floor(guc * kat))
+			if r.global_ek_guc != 0: guc_lines.append([r.ad, r.global_ek_guc])
+			if not is_equal_approx(r.global_kat, 1.0): kat_lines.append([r.ad, r.global_kat])
+	return {"guc": guc, "kat": kat, "raw": int(floor(guc * kat)),
+		"guc_lines": guc_lines, "kat_lines": kat_lines, "kosullu": kosullu}
 
 static func _terrain_at(ctx: Dictionary, coord: Vector2i) -> StringName:
 	return ctx.get("terrain", {}).get(coord, &"")

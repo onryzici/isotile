@@ -77,8 +77,9 @@ func sync_views(units: Array) -> void:
 		view.visible = unit.alive
 		_hp[unit.uid] = unit.hp
 		if unit.alive:
-			var base: Vector3 = _board.coord_to_world(unit.coord)
-			view.position = Vector3(base.x, _board.tile_top_y(unit.coord), base.z)
+			if not unit.is_flag:   # bayrak görseli kaide sırasında — yerinden oynatma
+				var base: Vector3 = _board.coord_to_world(unit.coord)
+				view.position = Vector3(base.x, _board.tile_top_y(unit.coord), base.z)
 			_update_label(unit.uid)
 
 # ------------------------------------------------------------- event oynatma
@@ -228,7 +229,8 @@ func _apply_final(result: Dictionary) -> void:
 			continue
 		view.visible = unit.alive
 		if unit.alive:
-			var base: Vector3 = _board.coord_to_world(unit.coord)
-			view.position = Vector3(base.x, _board.tile_top_y(unit.coord), base.z)
+			if not unit.is_flag:   # bayrak görseli kaide sırasında — yerinden oynatma
+				var base: Vector3 = _board.coord_to_world(unit.coord)
+				view.position = Vector3(base.x, _board.tile_top_y(unit.coord), base.z)
 			_hp[unit.uid] = unit.hp
 			_update_label(unit.uid)

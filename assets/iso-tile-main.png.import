@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://crv61lbvtt1pj"
-path="res://.godot/imported/okcu.png-8bf34849da5538592428d993fd8ed9a3.ctex"
+uid="uid://4tvgy5rogiep"
+path="res://.godot/imported/iso-tile-main.png-c5f6195fad1dea7fa72949357c0ac10e.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/okcu.png"
-dest_files=["res://.godot/imported/okcu.png-8bf34849da5538592428d993fd8ed9a3.ctex"]
+source_file="res://assets/iso-tile-main.png"
+dest_files=["res://.godot/imported/iso-tile-main.png-c5f6195fad1dea7fa72949357c0ac10e.ctex"]
 
 [params]
 

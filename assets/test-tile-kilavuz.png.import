@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c4b4heyx3bff3"
-path="res://.godot/imported/main.png-aabefee79c7f3cbaaa4bf9c666127ed5.ctex"
+uid="uid://cj5ugig8m1gs7"
+path="res://.godot/imported/test-tile-kilavuz.png-0842ebc508618c7c307777c27d11a408.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/main.png"
-dest_files=["res://.godot/imported/main.png-aabefee79c7f3cbaaa4bf9c666127ed5.ctex"]
+source_file="res://assets/test-tile-kilavuz.png"
+dest_files=["res://.godot/imported/test-tile-kilavuz.png-0842ebc508618c7c307777c27d11a408.ctex"]
 
 [params]
 

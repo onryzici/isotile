@@ -8,10 +8,35 @@ const TILE_GAP := 0.05          # bloklar arası ince boşluk (grid hissi)
 const BLOCK_BASE_H := 0.95      # taban blok yüksekliği (uzun küpler)
 const LEVEL_H := 0.45           # Yükselti başına ek yükseklik
 const ENEMY_BASE_LIFT := 0.85   # düşman kaidesi ana ızgaradan AYRI, yüksek platform
+const ENEMY_ROW_GAP := 0.2      # arka düşman sırası ile arena arasında boşluk
+
+## Billboard tile düzlemini görüş ekseni boyunca geriye it: ortho kamerada ekran
+## konumu DEĞİŞMEZ ama tile üstündeki 3D birimler düzlemin önünde kalır
+## (yoksa birimin arka yarısı kendi tile'ının görseline gömülür).
+const SPRITE_DEPTH_PUSH := 0.45
 
 const TOON := preload("res://shaders/toon.gdshader")
 const OUTLINE := preload("res://shaders/outline.gdshader")
 const OVERLAY := preload("res://shaders/grid_overlay.gdshader")
+
+## TEST: tüm zemin test-tile.png sprite'ından, efektsiz (shader/tint/outline yok)
+const USE_TEST_TILE := true
+## iso-tile-main.png: iso_tile_768x768 ham art'ının -35° kameraya dikeyde ×1.1472
+## önceden esnetilmiş sürümü (768×881, elmas merkezi y=228). Onur ham art verir,
+## scratchpad/stretch_tile.ps1 esnetip üretir; oyun 1:1 gösterir.
+const TEST_TILE_TEX := preload("res://assets/iso-tile-main.png")
+## Yarım boy kaide sürümü (üst yüz aynı, yan yüzler dikeyde ×0.5)
+const TEST_TILE_LEDGE_TEX := preload("res://assets/test-tile-ledge.png")
+## Üst yüz elmasının merkezi (px, görselin üstünden)
+const TEST_TILE_TOP_CENTER_PX := 228.0
+const LEDGE_TOP_CENTER_PX := 220.0   # iso_tile_768x576 (35°'ye esnetilmiş: 768×661)
+
+var _last_vdir := Vector3.ZERO   # kamera dönünce depth push'u tazelemek için
+
+## TEXTURE TOP testi: 3D bloklar kalır, üst yüz Onur'un dokusu + hafif normal map
+const USE_TEXTURE_TOP := true
+const TOP_DIFFUSE := preload("res://assets/tile_top_diffuse.png")
+const TOP_NORMAL := preload("res://assets/tile_top_normal.png")
 
 ## Biome renkleri (dummy — BiomeData .tres'e M4'te taşınır).
 ## Referans ton: desatüre yosun yeşili, düşman yakası çorak/pas, neredeyse
@@ -35,12 +60,12 @@ const INTRO_DROP := 7.0       # başlangıç aşağı ofseti
 
 ## Bir tile/birim koordinatının animasyon gecikmesi (köşegen sweep, ön→arka)
 func intro_delay(coord: Vector2i) -> float:
-	return float(coord.x + coord.y) * INTRO_STEP
+	return maxf(0.0, float(coord.x + coord.y) * INTRO_STEP)
 
 ## Tüm tile'ları aşağıdan yukarı, köşegen dalga hâlinde oturt (BACK overshoot).
 func play_intro() -> void:
 	for coord: Vector2i in _tile_mi:
-		var mi: MeshInstance3D = _tile_mi[coord]
+		var mi: Node3D = _tile_mi[coord]
 		var target: Vector3 = mi.position
 		mi.position = Vector3(target.x, target.y - INTRO_DROP, target.z)
 		mi.scale = Vector3(0.82, 0.82, 0.82)
@@ -72,13 +97,83 @@ func _make_tile_material(top: Color) -> ShaderMaterial:
 	mat.next_pass = outline
 	return mat
 
+## Ön kaide sırası (satır −1): yarım boy, salt görsel — oyuncu bayrağı burada durur
+const LEDGE_H := BLOCK_BASE_H * 0.5
+
 ## Grid'i inşa et. heights: Vector2i -> int (verilmeyen tile = 0)
 func build(heights: Dictionary = {}) -> void:
 	height_map = heights
+	_last_vdir = _initial_vdir()   # ilk _process intro tween'ini bozmasın
 	for row in BoardDefs.ROWS:
 		for col in BoardDefs.COLS:
 			var coord := Vector2i(col, row)
 			_build_tile(coord)
+	for col in BoardDefs.COLS:
+		_build_ledge_tile(Vector2i(col, -1))
+
+## Başlangıç kamera yönü (rig sabitlerinden — kamera henüz sahnede olmayabilir)
+func _initial_vdir() -> Vector3:
+	var p := deg_to_rad(-CameraRig.PITCH_DEG)
+	var yaw := deg_to_rad(CameraRig.BASE_YAW_DEG)
+	return -Vector3(cos(p) * sin(yaw), sin(p), cos(p) * cos(yaw)).normalized()
+
+func _view_push() -> Vector3:
+	return _last_vdir * SPRITE_DEPTH_PUSH
+
+## Kamera Q/E ile dönünce sprite tile'ların derinlik kaydırmasını tazele
+func _process(_dt: float) -> void:
+	if not USE_TEST_TILE:
+		set_process(false)
+		return
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var vdir := (-cam.global_transform.basis.z).normalized()
+	if vdir.is_equal_approx(_last_vdir):
+		return
+	_last_vdir = vdir
+	for coord: Vector2i in _tile_mi:
+		var n: Node3D = _tile_mi[coord]
+		if n.has_meta("base_pos"):
+			n.position = (n.get_meta("base_pos") as Vector3) + _view_push()
+
+## Yarım boy ön kaide tile'ı — mantık grid'inin dışında, tıklanamaz (collision yok)
+func _build_ledge_tile(coord: Vector2i) -> void:
+	var base := coord_to_world(coord)
+	var vis: Node3D
+	if USE_TEST_TILE:
+		var spr := _make_billboard_tile(TEST_TILE_LEDGE_TEX, LEDGE_TOP_CENTER_PX)
+		spr.position = Vector3(base.x, LEDGE_H, base.z)
+		spr.set_meta("base_pos", spr.position)
+		spr.position += _view_push()
+		vis = spr
+	else:
+		var mesh := BoxMesh.new()
+		mesh.size = Vector3(TILE_SIZE - TILE_GAP, LEDGE_H, TILE_SIZE - TILE_GAP)
+		var mi := MeshInstance3D.new()
+		mi.mesh = mesh
+		mi.material_override = _make_tile_material(PLAYER_BASE_TOP)
+		mi.material_override.set_shader_parameter("is_ground", true)
+		mi.position = Vector3(base.x, LEDGE_H * 0.5, base.z)
+		if USE_TEXTURE_TOP:
+			var plate := MeshInstance3D.new()
+			var pm := PlaneMesh.new()
+			pm.size = Vector2(TILE_SIZE - TILE_GAP, TILE_SIZE - TILE_GAP)
+			plate.mesh = pm
+			var pmat := StandardMaterial3D.new()
+			pmat.albedo_texture = TOP_DIFFUSE
+			pmat.normal_enabled = true
+			pmat.normal_texture = TOP_NORMAL
+			pmat.normal_scale = 1.0
+			pmat.roughness = 1.0
+			plate.material_override = pmat
+			plate.position = Vector3(0, LEDGE_H * 0.5 + 0.004, 0)
+			plate.rotation.y = float(absi(coord.x * 73856093) % 4) * PI * 0.5
+			mi.add_child(plate)
+		vis = mi
+	vis.name = "Ledge_%d" % coord.x
+	add_child(vis)
+	_tile_mi[coord] = vis
 
 ## Ana ızgara DÜZ (merdiven yok). Sadece en arka satır = düşman kaidesi, ayrı
 ## yüksek platform. Salt görsel — combat yükselti bonusu ctx heights'tan gelir.
@@ -90,48 +185,112 @@ func _base_offset(coord: Vector2i) -> float:
 func _build_tile(coord: Vector2i) -> void:
 	var h: int = height_map.get(coord, 0)
 	var block_h := BLOCK_BASE_H + h * LEVEL_H + _base_offset(coord)
-	var mesh := BoxMesh.new()
-	mesh.size = Vector3(TILE_SIZE - TILE_GAP, block_h, TILE_SIZE - TILE_GAP)
-	var mi := MeshInstance3D.new()
-	mi.mesh = mesh
-	var top := GRASS_TOP
-	if coord.y == BoardDefs.ROWS - 1:
-		top = ENEMY_BASE_TOP
-	elif coord.y == BoardDefs.NOMANS_ROW:
-		top = NOMANS_TOP
-	elif coord.y in BoardDefs.ENEMY_ROWS:
-		top = GRASS_TOP.lerp(GRASS_ENEMY, 0.7)
-	var hash_v := absi((coord.x * 73856093) ^ (coord.y * 19349663))
-	var tint := 0.9 + float(hash_v % 100) / 100.0 * 0.16
-	mi.material_override = _make_tile_material(top * tint)
-	mi.material_override.set_shader_parameter("is_ground", true)
 	var base := coord_to_world(coord)
-	mi.position = Vector3(base.x, block_h * 0.5, base.z)
-	mi.name = "Tile_%s" % BoardDefs.coord_name(coord)
-	add_child(mi)
-	_tile_mi[coord] = mi
+	var vis: Node3D
+	if USE_TEST_TILE:
+		vis = _make_sprite_tile()
+		vis.position = Vector3(base.x, block_h, base.z)
+		vis.set_meta("base_pos", vis.position)
+		vis.position += _view_push()
+	else:
+		var mesh := BoxMesh.new()
+		mesh.size = Vector3(TILE_SIZE - TILE_GAP, block_h, TILE_SIZE - TILE_GAP)
+		var mi := MeshInstance3D.new()
+		mi.mesh = mesh
+		var top := GRASS_TOP
+		if coord.y == BoardDefs.ROWS - 1:
+			top = ENEMY_BASE_TOP
+		elif coord.y == BoardDefs.NOMANS_ROW:
+			top = NOMANS_TOP
+		elif coord.y in BoardDefs.ENEMY_ROWS:
+			top = GRASS_TOP.lerp(GRASS_ENEMY, 0.7)
+		var hash_v := absi((coord.x * 73856093) ^ (coord.y * 19349663))
+		var tint := 0.9 + float(hash_v % 100) / 100.0 * 0.16
+		mi.material_override = _make_tile_material(top * tint)
+		mi.material_override.set_shader_parameter("is_ground", true)
+		mi.position = Vector3(base.x, block_h * 0.5, base.z)
+		if USE_TEXTURE_TOP:
+			# üst yüz plakası: doku + hafif normal map (DirectionalLight yakalar)
+			var plate := MeshInstance3D.new()
+			var pm := PlaneMesh.new()
+			pm.size = Vector2(TILE_SIZE - TILE_GAP, TILE_SIZE - TILE_GAP)
+			plate.mesh = pm
+			var pmat := StandardMaterial3D.new()
+			pmat.albedo_texture = TOP_DIFFUSE
+			pmat.normal_enabled = true
+			pmat.normal_texture = TOP_NORMAL
+			pmat.normal_scale = 1.0
+			pmat.roughness = 1.0
+			pmat.metallic = 0.0
+			plate.material_override = pmat
+			plate.position = Vector3(0, block_h * 0.5 + 0.004, 0)
+			# tekrar hissini kır: tile başına 90° adım rastgele döndür (hash'li)
+			plate.rotation.y = float(hash_v % 4) * PI * 0.5
+			mi.add_child(plate)
+		vis = mi
+	vis.name = "Tile_%s" % BoardDefs.coord_name(coord)
+	add_child(vis)
+	_tile_mi[coord] = vis
 
 	var body := StaticBody3D.new()
-	body.position = mi.position
+	body.position = Vector3(base.x, block_h * 0.5, base.z)
 	body.set_meta("coord", coord)
 	var cshape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
-	box.size = mesh.size
+	box.size = Vector3(TILE_SIZE - TILE_GAP, block_h, TILE_SIZE - TILE_GAP)
 	cshape.shape = box
 	body.add_child(cshape)
 	add_child(body)
 
+## TEST tile: art olduğu gibi OPAK billboard (QuadMesh + alpha-scissor).
+## Sprite3D KULLANILMAZ: Sprite3D şeffaf geçitte kalıyor ve büyük AABB'si
+## şeffaf sıralamada yerdeki gölge quad'larını yenip üstlerine çiziliyordu.
+## Alpha-scissor StandardMaterial3D = opak geçit → saf depth-buffer düzeni.
+## - genişlik: elmaslar TAM kenetlenir (gap yok — aralık yan yüz sızdırır)
+## - dikey: art 35°'ye önceden esnetilmiş, runtime ölçek yok
+func _make_sprite_tile() -> MeshInstance3D:
+	return _make_billboard_tile(TEST_TILE_TEX, TEST_TILE_TOP_CENTER_PX)
+
+## top_center_px: üst yüz elması merkezinin görselin ÜSTÜNDEN piksel uzaklığı
+## (ana tile 1024×1175 → 294; ledge 768×661 → 220). Genişlik dünyada aynı (√2·TILE).
+func _make_billboard_tile(tex: Texture2D, top_center_px: float) -> MeshInstance3D:
+	var px := sqrt(2.0) * TILE_SIZE / float(tex.get_width())
+	var quad := QuadMesh.new()
+	quad.size = Vector2(tex.get_width() * px, tex.get_height() * px)
+	# anchor görsel merkezinden üst yüz elması merkezine (y aşağı pozitif kayar)
+	quad.center_offset = Vector3(0.0,
+		-(tex.get_height() * 0.5 - top_center_px) * px, 0.0)
+	var mi := MeshInstance3D.new()
+	mi.mesh = quad
+	var mat := StandardMaterial3D.new()
+	mat.albedo_texture = tex
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	mat.alpha_scissor_threshold = 0.5
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	mat.billboard_keep_scale = true
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return mi
+
 ## Koordinat -> dünya konumu (tile merkezinin zemin izdüşümü).
 ## Satır 0 (oyuncu) kameraya yakın (+z), kolonlar x ekseninde ortalanır.
+## Arka düşman sırası arenadan ENEMY_ROW_GAP kadar ayrık durur (salt görsel;
+## birim/overlay/bayrak hepsi bu fonksiyonu kullandığından tutarlı kayar).
 func coord_to_world(coord: Vector2i) -> Vector3:
+	var z := (float(BoardDefs.ROWS - 1) * 0.5 - coord.y) * TILE_SIZE
+	if coord.y == BoardDefs.ROWS - 1:
+		z -= ENEMY_ROW_GAP
 	return Vector3(
 		(coord.x - (BoardDefs.COLS - 1) * 0.5) * TILE_SIZE,
 		0.0,
-		(float(BoardDefs.ROWS - 1) * 0.5 - coord.y) * TILE_SIZE
+		z
 	)
 
 ## Tile üst yüzeyinin y'si (birim/overlay yerleşimi için)
 func tile_top_y(coord: Vector2i) -> float:
+	if coord.y < 0:
+		return LEDGE_H   # ön kaide sırası (satır −1)
 	return BLOCK_BASE_H + height_map.get(coord, 0) * LEVEL_H + _base_offset(coord)
 
 ## Overlay aç/kapa. color örn: yeşil deployment, kırmızı telegraph.
@@ -139,15 +298,19 @@ func set_overlay(coord: Vector2i, color: Color, visible_: bool = true) -> void:
 	var ov: MeshInstance3D = _overlays.get(coord)
 	if ov == null:
 		var quad := PlaneMesh.new()
-		quad.size = Vector2(TILE_SIZE - TILE_GAP, TILE_SIZE - TILE_GAP)
+		# Sprite tile modunda elmas tam TILE_SIZE — overlay birebir aynı boyda
+		var os := TILE_SIZE if USE_TEST_TILE else TILE_SIZE - TILE_GAP
+		quad.size = Vector2(os, os)
 		ov = MeshInstance3D.new()
 		ov.mesh = quad
 		var mat := ShaderMaterial.new()
 		mat.shader = OVERLAY
 		ov.material_override = mat
 		var base := coord_to_world(coord)
-		# Zemin plakalarının (y ≈ 0.03+0.05) üzerinde kalmalı
-		ov.position = Vector3(base.x, tile_top_y(coord) + 0.075, base.z)
+		# Shader depth_test_disabled — kaldırma payı gerekmez; yükseklik ekranda
+		# kayma yaratır, üst yüz düzlemine yapışık dursun
+		var lift := 0.01 if USE_TEST_TILE else 0.075
+		ov.position = Vector3(base.x, tile_top_y(coord) + lift, base.z)
 		add_child(ov)
 		_overlays[coord] = ov
 	(ov.material_override as ShaderMaterial).set_shader_parameter("color", color)

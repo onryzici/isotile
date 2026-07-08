@@ -15,17 +15,20 @@ func _ready() -> void:
 	EventBus.return_to_map.connect(_on_return_to_map)
 
 ## Global film grain — tüm ekranların üstünde ince gürültü + vinyet
+## NOT: fonksiyon ekran akışı bootstrap'ini de içeriyor; grain katmanı
+## kapalı (test — Onur isteği), akış duruyor.
 func _setup_grain() -> void:
-	var grain := CanvasLayer.new()
-	grain.layer = 100
-	var rect := ColorRect.new()
-	rect.set_anchors_preset(Control.PRESET_FULL_RECT)
-	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var gmat := ShaderMaterial.new()
-	gmat.shader = preload("res://shaders/grain.gdshader")
-	rect.material = gmat
-	grain.add_child(rect)
-	add_child(grain)
+	# grain katmanı devre dışı:
+	# var grain := CanvasLayer.new()
+	# grain.layer = 100
+	# var rect := ColorRect.new()
+	# rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	# rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# var gmat := ShaderMaterial.new()
+	# gmat.shader = preload("res://shaders/grain.gdshader")
+	# rect.material = gmat
+	# grain.add_child(rect)
+	# add_child(grain)
 
 	var args := OS.get_cmdline_user_args()
 	var enc_override := false

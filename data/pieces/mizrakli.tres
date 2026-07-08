@@ -14,4 +14,4 @@ hiz = 4
 mevzi_maliyeti = 1
 base_traits = [ExtResource("2")]
 tier = 1
-mesh_id = &"main"
+mesh_id = &"kuzu"

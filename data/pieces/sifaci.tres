@@ -14,3 +14,4 @@ hiz = 5
 mevzi_maliyeti = 2
 base_traits = [ExtResource("2")]
 tier = 1
+mesh_id = &"sifaci"
