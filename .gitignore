@@ -16,3 +16,6 @@ Desktop.ini
 *.pck
 *.zip
 build/
+
+# Geliştirme ekran görüntüleri (debug --shot çıktısı)
+screenshots/

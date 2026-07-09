@@ -8,7 +8,7 @@ extends CanvasLayer
 ## birimin ARKASINDA, ÖN parmak ucu birimin ÖNÜNDE kalır → birim ele gömülü.
 ## Çizim sırası (arkadan öne): _back → _held → _front. Tamamen ekran-uzayı.
 
-const HAND_TEX := preload("res://assets/hand.png")
+const HAND_TEX := preload("res://assets/ui/hand.png")
 const HAND_W := 698.0
 const HAND_H := 679.0
 
@@ -28,7 +28,7 @@ const MODEL_DX := 44.0            # birimi yatayda kaydır (+ = sağa)
 
 ## Takip + giriş hissi
 const FOLLOW_LERP := 22.0
-const GRAB_RISE := 220.0
+const GRAB_RISE := 120.0   # el bu kadar yukarıdan iner (daha az = daha yumuşak)
 
 var _root: Control          # kavrama noktası — imleci (grip origin) takip eder
 var _back: TextureRect      # elin tamamı (birimin arkasında)
@@ -101,6 +101,9 @@ func grab(tex: Texture2D, tint: Color, at: Vector2) -> void:
 	_releasing = false
 	_idle = false
 	visible = true
+	# Birim taşınırken sistem imleci gizlenir — el zaten imleç görevi görür (Onur).
+	# HIDDEN modu konumu okumaya devam eder (el fareyi takip eder), sadece ok gizlenir.
+	Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
 	_root.modulate.a = 1.0
 	_root.rotation = 0.0
 	_target = at
@@ -110,22 +113,22 @@ func grab(tex: Texture2D, tint: Color, at: Vector2) -> void:
 	_root.add_child(_held)     # _back (index0) ile _front arasında → ortada
 	_root.add_child(_front)    # en üstte (ön parmak ucu)
 
-	# Giriş: el yukarıdan iner, birim grip'e pop eder
+	# Giriş: el yukarıdan YUMUŞAKÇA iner (daha az yüksek, daha uzun, overshoot yok)
 	_root.modulate.a = 0.0
-	_back.position = _back_base + Vector2(24, -GRAB_RISE)
-	_front.position = _front_base + Vector2(24, -GRAB_RISE)
-	_held.scale = Vector2(0.45, 0.45)
+	_back.position = _back_base + Vector2(16, -GRAB_RISE)
+	_front.position = _front_base + Vector2(16, -GRAB_RISE)
+	_held.scale = Vector2(0.6, 0.6)
 	_held.modulate.a = 0.0
 	var tw := create_tween().set_parallel(true)
 	_tw = tw
-	tw.tween_property(_root, "modulate:a", 1.0, 0.12)
-	tw.tween_property(_back, "position", _back_base, 0.26) \
-		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tw.tween_property(_front, "position", _front_base, 0.26) \
-		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tw.tween_property(_held, "modulate:a", 1.0, 0.14).set_delay(0.05)
-	tw.tween_property(_held, "scale", Vector2.ONE, 0.24) \
-		.set_delay(0.05).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(_root, "modulate:a", 1.0, 0.18)
+	tw.tween_property(_back, "position", _back_base, 0.44) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_property(_front, "position", _front_base, 0.44) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_property(_held, "modulate:a", 1.0, 0.2).set_delay(0.06)
+	tw.tween_property(_held, "scale", Vector2.ONE, 0.32) \
+		.set_delay(0.06).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tw.chain().tween_callback(func() -> void: _idle = true)
 
 ## Birimi tile'a bırak: el hedefe daldırır, birimi bırakır, sonra çekilir.
@@ -180,15 +183,29 @@ func cancel() -> void:
 func is_active() -> bool:
 	return _active
 
+## Taşınan modelin AYAK noktası (alt-orta), grip origin'e (fare) göre ekran-pikseli.
+## Tile seçimi/bırakma bu noktadan yapılır: kullanıcı, modelin alt ucunun durduğu
+## tile'a bırakır (Onur — "en alt uç neredeyse etkileşim orada"). _make_preview ile
+## uyumlu: model yatayda MODEL_DX'te ortalı, tepesi TOP_OFF'ta, yüksekliği HELD_H.
+func foot_offset() -> Vector2:
+	return Vector2(MODEL_DX, TOP_OFF + HELD_H)
+
 func _finish() -> void:
 	_active = false
 	_releasing = false
 	_idle = false
 	_tw = null
 	visible = false
+	# Birim bırakıldı/iptal — sistem imlecini geri getir.
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	_clear_held()
 	_back.position = _back_base
 	_front.position = _front_base
+
+## Sahne değişimi vb. el aktifken olursa imleç gizli kalmasın.
+func _exit_tree() -> void:
+	if _active:
+		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 
 func _clear_held() -> void:
 	if _held and is_instance_valid(_held):

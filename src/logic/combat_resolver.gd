@@ -355,13 +355,16 @@ static func _terrain_at(ctx: Dictionary, coord: Vector2i) -> StringName:
 
 ## Vuruş hattı (§3.4): hasar → on_hit tetikleri → ölümse on_kill/on_death
 static func _attack(src: CombatUnit, dst: CombatUnit, units: Array, ctx: Dictionary, events: Array) -> void:
-	var raw := _compute_attack(src, dst, units, ctx)
+	# Tek döküm hesabı → hem hasar hem sunum (Güç×Kat ödemesi görünür olsun, §19/Balatro)
+	var bd := compute_breakdown(src, dst, units, ctx)
+	var raw: int = bd["raw"]
 	var final := maxi(0, raw - dst.zirh)
 	var absorbed := mini(final, dst.kalkan)
 	dst.kalkan -= absorbed
 	dst.hp -= final - absorbed
 	events.append({"t": "ATTACK", "src": src.uid, "dst": dst.uid,
-		"raw": raw, "final": final, "crit": false})
+		"raw": raw, "final": final, "guc": bd["guc"], "kat": bd["kat"],
+		"kat_lines": bd["kat_lines"], "crit": false})
 	if absorbed > 0:
 		events.append({"t": "STATUS", "target": dst.uid, "status": "kalkan", "stacks": dst.kalkan})
 	src.vurus_sayaci += 1

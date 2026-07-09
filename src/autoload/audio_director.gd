@@ -7,20 +7,24 @@ var _players: Array[AudioStreamPlayer] = []
 var _music: AudioStreamPlayer
 const POOL_SIZE := 8
 
-## Ses id -> dosya (deploy/savaş/vuruş/ölüm/iyileşme/zafer/yenilgi)
+## Ses id -> dosya. Gerçekçi SFX'ler SoundBible'dan (CC-BY 3.0 — bkz. CREDITS.md).
 const SFX_FILES := {
 	&"deploy_clunk": "res://assets/audio/sfx_deploy.wav",
-	&"hit": "res://assets/audio/sfx_hit.wav",
-	&"death": "res://assets/audio/sfx_death.wav",
+	&"hit": "res://assets/audio/sfx_hit_real.mp3",       # gerçekçi vuruş
+	&"arrow": "res://assets/audio/sfx_arrow.mp3",        # okçu ok atışı
+	&"electric": "res://assets/audio/sfx_electric.mp3",  # şimşek/elektrik zap
+	&"fire": "res://assets/audio/sfx_fire.mp3",     # yanma/alev
+	&"battlecry": "res://assets/audio/sfx_battlecry.mp3",# savaş narası
+	&"death": "res://assets/audio/sfx_death_cry.mp3",
 	&"heal": "res://assets/audio/sfx_heal.wav",
 	&"battle_start": "res://assets/audio/sfx_battle_start.wav",
 	&"victory": "res://assets/audio/sfx_victory.wav",
 	&"defeat": "res://assets/audio/sfx_defeat.wav",
 }
-const MUSIC_BATTLE := "res://assets/audio/music_battle.ogg"
+const MUSIC_BATTLE := "res://assets/audio/the_last_stand.mp3"
 
-## Ses geçici olarak KAPALI (istek üzerine). Yeniden açmak için true yap.
-const ENABLED := false
+## Ses AÇIK.
+const ENABLED := true
 
 func _ready() -> void:
 	for i in POOL_SIZE:
@@ -63,6 +67,8 @@ func play_music(path: String = MUSIC_BATTLE, vol_db: float = -13.0) -> void:
 	if stream == null:
 		return
 	if stream is AudioStreamOggVorbis:
+		stream.loop = true
+	elif stream is AudioStreamMP3:
 		stream.loop = true
 	if _music.stream == stream and _music.playing:
 		return

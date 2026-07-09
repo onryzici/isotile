@@ -71,6 +71,7 @@ var _telegraph: Dictionary = {}        # Vector2i -> Color (düşman niyeti §11
 func _ready() -> void:
 	_load_encounter()
 	_setup_environment()
+	_setup_ambient_particles()
 	_setup_lights()
 	_setup_camera()
 	_setup_board()
@@ -91,6 +92,16 @@ func _ready() -> void:
 	# El (grab) görsel doğrulaması: karttan seçimi kodla tetikle
 	if "--handtest" in OS.get_cmdline_user_args():
 		(func() -> void: _on_card_pressed(0)).call_deferred()
+	# Döküm paneli görsel doğrulaması: birim diz + hover
+	if "--bdtest" in OS.get_cmdline_user_args():
+		_debug_breakdown.call_deferred()
+
+func _debug_breakdown() -> void:
+	_selected = 0
+	_try_place(Vector2i(2, 1))
+	await get_tree().create_timer(1.0).timeout
+	_hover = Vector2i(2, 1)
+	_refresh_breakdown()
 
 # ------------------------------------------------------------------ kurulum
 
@@ -150,14 +161,19 @@ func _setup_environment() -> void:
 	env.background_mode = Environment.BG_CANVAS
 	env.background_canvas_max_layer = -1
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.45, 0.5, 0.75)
-	env.ambient_light_energy = 0.3
-	# Glow AÇIK — emissive pop şart (§16.7)
+	env.ambient_light_color = Color(0.40, 0.42, 0.55)
+	env.ambient_light_energy = 0.22
+	# Glow AÇIK ama KISIK — efektler pop'lar, sahne fazla parlamaz (referans mat ton)
 	env.glow_enabled = true
-	env.glow_intensity = 0.7
-	env.glow_bloom = 0.02
-	env.glow_hdr_threshold = 1.1
+	env.glow_intensity = 0.42
+	env.glow_bloom = 0.015
+	env.glow_hdr_threshold = 1.25
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	# Renk düzeltme (§referans): DESATÜRASYON + hafif koyulaştırma → moody/mat
+	env.adjustment_enabled = true
+	env.adjustment_brightness = 0.94
+	env.adjustment_contrast = 1.06
+	env.adjustment_saturation = 0.80
 	env.ssao_enabled = true   # sadece blok aralarında ince derinlik (§16.7)
 	env.ssao_intensity = 0.85   # düz çim üstünde muddy gölge yapmasın
 	env.ssao_radius = 0.45      # yalnız yakın köşe/oyuklar
@@ -177,11 +193,57 @@ func _setup_environment() -> void:
 	fog_layer.add_child(fog)
 	add_child(fog_layer)
 
+## Atmosfer: board çevresinde ağır ağır süzülen küçük kor/toz zerreleri (Onur:
+## "küçük partiküller"). Additive + glow → hafif parıltı; türbülansla organik gezinir.
+func _setup_ambient_particles() -> void:
+	var p := GPUParticles3D.new()
+	p.amount = 64
+	p.lifetime = 11.0
+	p.preprocess = 8.0          # sahne açılınca zaten dağılmış olsun
+	p.randomness = 1.0
+	p.local_coords = false
+	p.position = Vector3(0.0, 2.2, -0.5)
+	var pm := ParticleProcessMaterial.new()
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	pm.emission_box_extents = Vector3(7.5, 3.6, 6.0)
+	pm.direction = Vector3(0.15, 1.0, 0.0)
+	pm.spread = 28.0
+	pm.gravity = Vector3(0.0, 0.03, 0.0)   # neredeyse yerçekimsiz, yavaş yükseliş
+	pm.initial_velocity_min = 0.08
+	pm.initial_velocity_max = 0.30
+	pm.scale_min = 0.5
+	pm.scale_max = 1.0
+	pm.turbulence_enabled = true
+	pm.turbulence_noise_strength = 0.6
+	pm.turbulence_noise_scale = 1.2
+	pm.color = Color(1.0, 0.82, 0.55, 0.45)   # sıcak kor tonu (soğuk bg'ye kontrast)
+	# ömür boyu alfa: yumuşak gir → sabit → yumuşak çık
+	var curve := Curve.new()
+	curve.add_point(Vector2(0.0, 0.0))
+	curve.add_point(Vector2(0.18, 1.0))
+	curve.add_point(Vector2(0.8, 1.0))
+	curve.add_point(Vector2(1.0, 0.0))
+	var ct := CurveTexture.new(); ct.curve = curve
+	pm.alpha_curve = ct
+	p.process_material = pm
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.06, 0.06)
+	var dm := StandardMaterial3D.new()
+	dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	dm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	dm.albedo_texture = preload("res://assets/fx/spark.png")
+	dm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	dm.vertex_color_use_as_albedo = true
+	quad.material = dm
+	p.draw_pass_1 = quad
+	add_child(p)
+
 func _setup_lights() -> void:
 	# 1 sıcak anahtar ışık (üstten) + mor pus fill'i (§16.7) — moody kontrast
 	var key := DirectionalLight3D.new()
-	key.light_color = Color(1.0, 0.86, 0.62)
-	key.light_energy = 2.1
+	key.light_color = Color(1.0, 0.88, 0.68)
+	key.light_energy = 1.65   # kısık (referans mat/moody ton — fazla parlamasın)
 	key.rotation_degrees = Vector3(-55, -35, 0)
 	key.shadow_enabled = true
 	add_child(key)
@@ -222,7 +284,7 @@ func _ctx() -> Dictionary:
 
 ## mesh_id doluysa sprite yolu (§16.5 billboard birim), boşsa kapsül
 func _sprite_path(piece: PieceData) -> String:
-	return "res://assets/%s.png" % piece.mesh_id if piece.mesh_id != &"" else ""
+	return "res://assets/units/%s.png" % piece.mesh_id if piece.mesh_id != &"" else ""
 
 func _setup_enemies() -> void:
 	for coord: Vector2i in _enemy_setup:
@@ -305,6 +367,13 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
 		_deselect()
 
+## El bir birim taşırken tile etkileşimi FARE değil, modelin AYAK (alt-orta) noktasından
+## yapılır (Onur): kullanıcı, taşın alt ucunun durduğu tile'a bırakır. El yoksa fare aynen.
+func _drop_point(screen_pos: Vector2) -> Vector2:
+	if _hand and _hand.is_active():
+		return screen_pos + _hand.foot_offset()
+	return screen_pos
+
 func _raycast_tile(screen_pos: Vector2) -> Variant:
 	var cam := camera_rig.camera
 	var from := cam.project_ray_origin(screen_pos)
@@ -316,7 +385,7 @@ func _raycast_tile(screen_pos: Vector2) -> Variant:
 	return null
 
 func _on_left_click(pos: Vector2) -> void:
-	var coord = _raycast_tile(pos)
+	var coord = _raycast_tile(_drop_point(pos))
 	if coord == null:
 		return
 	if _targeting:
@@ -339,7 +408,7 @@ func _on_right_click(pos: Vector2) -> void:
 		_recall(coord)
 
 func _update_hover(pos: Vector2) -> void:
-	var coord = _raycast_tile(pos)
+	var coord = _raycast_tile(_drop_point(pos))
 	if coord == _hover:
 		return
 	_hover = coord
@@ -362,7 +431,11 @@ func _refresh_breakdown() -> void:
 		ui.hide_breakdown()
 		return
 	var bd := CombatResolver.compute_breakdown(hovered, null, built["units"], _ctx())
-	ui.show_breakdown(hovered.ad, bd)
+	# Birimin ekran pozisyonu → panel birimin yanında açılır (§19 canlı döküm)
+	var world := board.coord_to_world(_hover)
+	var anchor := camera_rig.camera.unproject_position(
+		Vector3(world.x, board.tile_top_y(_hover) + 0.7, world.z))
+	ui.show_breakdown(hovered.ad, bd, anchor)
 
 # ------------------------------------------------------------------ deployment akışı
 
@@ -417,8 +490,10 @@ func _try_place(coord: Vector2i) -> void:
 		EventBus.piece_deployed.emit(piece.id, coord)
 		AudioDirector.play_sfx(&"deploy_clunk")   # ses dosyası bağlanınca çalar (§20)
 		_update_telegraph()
-	var tile_screen := camera_rig.camera.unproject_position(rest + Vector3(0, 0.5, 0))
-	_hand.release(tile_screen, drop)
+	# Grip'i, modelin AYAĞI tile tepesine oturacak şekilde hedefle (foot_offset kadar
+	# yukarıda) — böylece bırakma anında el yukarı zıplamaz, ayak seçilen tile'da kalır.
+	var grip_screen := camera_rig.camera.unproject_position(rest) - _hand.foot_offset()
+	_hand.release(grip_screen, drop)
 	ui.set_mevzi(deployment.mevzi)
 	EventBus.mevzi_changed.emit(deployment.mevzi)
 	ui.battle_button.disabled = false
@@ -598,7 +673,8 @@ func _on_end_turn() -> void:
 	await _run_turn()
 
 func _info_of(u: CombatUnit) -> Dictionary:
-	return {"ad": u.ad, "atk": u.atk, "spd": u.spd, "hp": u.hp, "max_hp": u.max_hp}
+	return {"ad": u.ad, "atk": u.atk, "spd": u.spd, "hp": u.hp, "max_hp": u.max_hp,
+		"sinif": u.sinif, "piece_id": u.piece_id}
 
 ## Düşmanları + bayrakları CombatUnit olarak kur, presenter'ı bir kez ayarla
 func _start_battle() -> void:
@@ -626,6 +702,7 @@ func _start_battle() -> void:
 		_enemy_flag_coord, _enemy_flag_hp, _uid_next, "Düşman Bayrağı"))
 	_view_by_uid[_uid_next] = _enemy_flag_view
 	_presenter = CombatPresenter.new()
+	_presenter.camera_rig = camera_rig   # kritik vuruşta ekran sarsıntısı
 	add_child(_presenter)
 	_presenter.round_changed.connect(ui.set_round)
 	_presenter.log_line.connect(ui.add_log)   # savaş logu
@@ -637,6 +714,7 @@ func _start_battle() -> void:
 	_presenter.setup(_view_by_uid, board, info)
 	EventBus.battle_started.emit()
 	AudioDirector.play_sfx(&"battle_start")
+	AudioDirector.play_sfx(&"battlecry", 0.05)   # savaş narası
 
 ## Yeni dizilenleri _units'e kat (ON_DEPLOY), 1 tur çöz, sonucu değerlendir
 func _run_turn() -> void:

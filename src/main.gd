@@ -10,9 +10,46 @@ var _last_won := false
 var _node_type: StringName = &"savas"   # son ziyaret edilen düğüm tipi
 
 func _ready() -> void:
+	# Özel fare imleci (oyunun stiline uygun ok) — hotspot ucu
+	var cur := load("res://assets/ui/cursor.png")
+	if cur:
+		Input.set_custom_mouse_cursor(cur, Input.CURSOR_ARROW, Vector2(2, 1))
 	_setup_grain()
 	EventBus.map_node_selected.connect(_on_map_node)
 	EventBus.return_to_map.connect(_on_return_to_map)
+
+## P → ekran görüntüsü al (res://screenshots/). Herhangi bir ekranda çalışır.
+func _input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_P:
+		_take_screenshot()
+
+## --shot[=saniye] : belirtilen süre sonra otomatik screenshot al + çık (görsel CI)
+func _maybe_autoshot() -> void:
+	for arg in OS.get_cmdline_user_args():
+		if arg == "--shot" or arg.begins_with("--shot="):
+			var secs := 2.5
+			if arg.begins_with("--shot="):
+				secs = float(arg.substr(7))
+			var t := get_tree().create_timer(secs)
+			await t.timeout
+			await _take_screenshot()
+			await get_tree().create_timer(0.2).timeout
+			get_tree().quit()
+			return
+
+func _take_screenshot() -> void:
+	# Kare tam çizildikten sonra yakala (aksi hâlde eksik/boş frame olabilir)
+	await RenderingServer.frame_post_draw
+	var img := get_viewport().get_texture().get_image()
+	var dir_abs := ProjectSettings.globalize_path("res://screenshots")
+	DirAccess.make_dir_recursive_absolute(dir_abs)
+	var ts := Time.get_datetime_string_from_system(false, true).replace(":", "-").replace(" ", "_")
+	var path := "%s/shot_%s.png" % [dir_abs, ts]
+	var err := img.save_png(path)
+	if err == OK:
+		print("📸 screenshot: ", path)
+	else:
+		push_warning("screenshot kaydedilemedi (err %d): %s" % [err, path])
 
 ## Global film grain — tüm ekranların üstünde ince gürültü + vinyet
 ## NOT: fonksiyon ekran akışı bootstrap'ini de içeriyor; grain katmanı
@@ -38,7 +75,7 @@ func _setup_grain() -> void:
 
 	# Debug ekranları (test) — hep taze run
 	if enc_override or "--merge" in args or "--autobattle" in args \
-			or "--shop" in args or "--reward" in args \
+			or "--shop" in args or "--reward" in args or "--map" in args \
 			or "--garrison" in args or "--runend" in args:
 		GameState.start_new_run()
 		for arg in args:
@@ -59,14 +96,32 @@ func _setup_grain() -> void:
 		elif "--runend" in args:
 			_end_layers = 3
 			_show_run_end()
+		elif "--map" in args:
+			_show_map()
 		else:
 			_show(BATTLE_SCREEN.instantiate())
+		_maybe_autoshot()
 		return
 
-	# Normal: kayıt varsa devam, yoksa yeni run
-	if not GameState.load_run():
+	# Normal: başlangıç menüsü
+	_show_menu()
+	_maybe_autoshot()
+
+## Başlangıç menüsü → Yeni Sefer / Devam / Garnizon
+func _show_menu() -> void:
+	var m := MainMenuScreen.new()
+	m.new_run.connect(func() -> void:
 		GameState.start_new_run()
-	_show_map()
+		_show_map())
+	m.continue_run.connect(func() -> void:
+		if not GameState.load_run():
+			GameState.start_new_run()
+		_show_map())
+	m.open_garrison.connect(func() -> void:
+		var g := GarrisonScreen.new()
+		g.closed.connect(_show_menu)
+		_show(g))
+	_show(m)
 
 func _save() -> void:
 	GameState.save_run()

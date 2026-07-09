@@ -14,6 +14,7 @@ const ZOOM_STEP := 1.0
 var camera: Camera3D
 var _target_yaw := BASE_YAW_DEG
 var _tween: Tween
+var _shake_tw: Tween
 
 func _ready() -> void:
 	rotation_degrees.y = BASE_YAW_DEG
@@ -48,3 +49,17 @@ func _rotate_step(delta_deg: float) -> void:
 
 func _zoom(delta: float) -> void:
 	camera.size = clampf(camera.size + delta, ZOOM_MIN, ZOOM_MAX)
+
+## Ekran sarsıntısı (kritik/ağır vuruş). Ortho frustum h/v_offset'i titret → gerçek
+## konumu bozmaz, sonra sıfırlar. strength = dünya birimi, dur = toplam süre.
+func shake(strength: float = 0.3, dur: float = 0.3) -> void:
+	if _shake_tw and _shake_tw.is_running():
+		_shake_tw.kill()
+	_shake_tw = create_tween()
+	var steps := 5
+	for i in steps:
+		var falloff := 1.0 - float(i) / float(steps)
+		_shake_tw.tween_property(camera, "h_offset", randf_range(-1.0, 1.0) * strength * falloff, dur / steps)
+		_shake_tw.parallel().tween_property(camera, "v_offset", randf_range(-1.0, 1.0) * strength * falloff, dur / steps)
+	_shake_tw.tween_property(camera, "h_offset", 0.0, dur / steps)
+	_shake_tw.parallel().tween_property(camera, "v_offset", 0.0, dur / steps)

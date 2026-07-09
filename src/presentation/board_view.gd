@@ -21,22 +21,23 @@ const OVERLAY := preload("res://shaders/grid_overlay.gdshader")
 
 ## TEST: tüm zemin test-tile.png sprite'ından, efektsiz (shader/tint/outline yok)
 const USE_TEST_TILE := true
-## iso-tile-main.png: iso_tile_768x768 ham art'ının -35° kameraya dikeyde ×1.1472
-## önceden esnetilmiş sürümü (768×881, elmas merkezi y=228). Onur ham art verir,
-## scratchpad/stretch_tile.ps1 esnetip üretir; oyun 1:1 gösterir.
-const TEST_TILE_TEX := preload("res://assets/iso-tile-main.png")
-## Yarım boy kaide sürümü (üst yüz aynı, yan yüzler dikeyde ×0.5)
-const TEST_TILE_LEDGE_TEX := preload("res://assets/test-tile-ledge.png")
-## Üst yüz elmasının merkezi (px, görselin üstünden)
-const TEST_TILE_TOP_CENTER_PX := 228.0
-const LEDGE_TOP_CENTER_PX := 220.0   # iso_tile_768x576 (35°'ye esnetilmiş: 768×661)
+## İki ana kübik tile (Onur art'ı, 1024×1024): A = koyu üst, B = açık/gri üst.
+## Tahtaya per-kare hash ile ~%70 A / %30 B karıştırılır (bkz. _tile_tex_for).
+const TILE_A_TEX := preload("res://assets/tiles/iso_tile_a.png")   # koyu üst yüz
+const TILE_B_TEX := preload("res://assets/tiles/iso_tile_b.png")   # açık/gri üst yüz
+## İnce ön-kaide (ledge) tile'ı — aynı stil, alçak blok (1024×768).
+const INCE_TILE_TEX := preload("res://assets/tiles/ince_tile.png")
+## Üst yüz elmasının merkezi (px, görselin üstünden). Ham tile'lar -35° kamera için
+## dikeyde ×1.1472 ön-esnetildi (a/b 1024×1175, ince 1024×881) → düz lav/pus/overlay
+## plane'leri üst yüze BİREBİR oturur. Elmas merkezi 256×1.1472 ≈ 294.
+const TILE_TOP_CENTER_PX := 294.0
 
 var _last_vdir := Vector3.ZERO   # kamera dönünce depth push'u tazelemek için
 
 ## TEXTURE TOP testi: 3D bloklar kalır, üst yüz Onur'un dokusu + hafif normal map
 const USE_TEXTURE_TOP := true
-const TOP_DIFFUSE := preload("res://assets/tile_top_diffuse.png")
-const TOP_NORMAL := preload("res://assets/tile_top_normal.png")
+const TOP_DIFFUSE := preload("res://assets/tiles/tile_top_diffuse.png")
+const TOP_NORMAL := preload("res://assets/tiles/tile_top_normal.png")
 
 ## Biome renkleri (dummy — BiomeData .tres'e M4'te taşınır).
 ## Referans ton: desatüre yosun yeşili, düşman yakası çorak/pas, neredeyse
@@ -142,7 +143,7 @@ func _build_ledge_tile(coord: Vector2i) -> void:
 	var base := coord_to_world(coord)
 	var vis: Node3D
 	if USE_TEST_TILE:
-		var spr := _make_billboard_tile(TEST_TILE_LEDGE_TEX, LEDGE_TOP_CENTER_PX)
+		var spr := _make_billboard_tile(INCE_TILE_TEX, TILE_TOP_CENTER_PX)
 		spr.position = Vector3(base.x, LEDGE_H, base.z)
 		spr.set_meta("base_pos", spr.position)
 		spr.position += _view_push()
@@ -188,7 +189,7 @@ func _build_tile(coord: Vector2i) -> void:
 	var base := coord_to_world(coord)
 	var vis: Node3D
 	if USE_TEST_TILE:
-		vis = _make_sprite_tile()
+		vis = _make_sprite_tile(coord)
 		vis.position = Vector3(base.x, block_h, base.z)
 		vis.set_meta("base_pos", vis.position)
 		vis.position += _view_push()
@@ -248,8 +249,15 @@ func _build_tile(coord: Vector2i) -> void:
 ## Alpha-scissor StandardMaterial3D = opak geçit → saf depth-buffer düzeni.
 ## - genişlik: elmaslar TAM kenetlenir (gap yok — aralık yan yüz sızdırır)
 ## - dikey: art 35°'ye önceden esnetilmiş, runtime ölçek yok
-func _make_sprite_tile() -> MeshInstance3D:
-	return _make_billboard_tile(TEST_TILE_TEX, TEST_TILE_TOP_CENTER_PX)
+func _make_sprite_tile(coord: Vector2i) -> MeshInstance3D:
+	return _make_billboard_tile(_tile_tex_for(coord), TILE_TOP_CENTER_PX)
+
+## Per-kare A/B seçimi: sabit hash ile rastgele GÖRÜNEN ama kararlı desen.
+## ~%30 B (açık), gerisi A (koyu) — "çoğunluk A" (Onur tercihi). Salt görsel,
+## combat determinizmini etkilemez.
+func _tile_tex_for(coord: Vector2i) -> Texture2D:
+	var hash_v := absi((coord.x * 73856093) ^ (coord.y * 19349663) ^ 0x5f3759df)
+	return TILE_B_TEX if (hash_v % 100) < 30 else TILE_A_TEX
 
 ## top_center_px: üst yüz elması merkezinin görselin ÜSTÜNDEN piksel uzaklığı
 ## (ana tile 1024×1175 → 294; ledge 768×661 → 220). Genişlik dünyada aynı (√2·TILE).
@@ -405,9 +413,10 @@ func clear_terrain(coord: Vector2i) -> void:
 ## Damarlı zemin plakası: koyu taban + noise'dan sızan ışık (terrain_slab shader)
 func _make_slab(base: Color, glow: Color, strength: float, scale: float,
 		threshold: float, anim: float) -> MeshInstance3D:
+	# DÜZ plane (yan yüz YOK) → tile yüzeyine boyanmış gibi, kabarık durmaz.
 	var slab := MeshInstance3D.new()
-	var mesh := BoxMesh.new()
-	mesh.size = Vector3(0.9, 0.05, 0.9)
+	var mesh := PlaneMesh.new()
+	mesh.size = Vector2(0.96, 0.96)
 	slab.mesh = mesh
 	var mat := ShaderMaterial.new()
 	mat.shader = preload("res://shaders/terrain_slab.gdshader")
@@ -418,5 +427,5 @@ func _make_slab(base: Color, glow: Color, strength: float, scale: float,
 	mat.set_shader_parameter("vein_threshold", threshold)
 	mat.set_shader_parameter("anim_speed", anim)
 	slab.material_override = mat
-	slab.position.y = 0.03
+	slab.position.y = 0.014   # tile üstüne ince yat (z-fighting olmasın)
 	return slab

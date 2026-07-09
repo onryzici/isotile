@@ -8,14 +8,14 @@
 script = ExtResource("1")
 id = &"rahip"
 ad = "Rahip"
-sinif = 2
-saldiri = 1
+sinif = 1
+saldiri = 3
 can = 8
 hiz = 5
 mevzi_maliyeti = 2
 base_traits = [ExtResource("2"), ExtResource("3")]
 etiketler = [&"Kutsal"]
 tier = 2
-mesh_id = &""
+mesh_id = &"priest"
 starter = false
 fiyat = 9

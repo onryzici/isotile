@@ -15,6 +15,12 @@ const CLASS_COLORS := {
 	&"ENEMY": Color(0.42, 0.26, 0.55),   # düşman = mor (pus)
 }
 
+## Per-sprite ölçek (kuzu referans 1.0; diğerleri çerçeveyi daha az doldurduğu için
+## büyütülür). Buradaki dosya adı = mesh_id. Eksikler varsayılan 1.32 alır.
+const SPRITE_SCALE := {
+	"kuzu": 1.0,
+}
+
 var _visual: Node3D          # MeshInstance3D (kapsül) veya Sprite3D
 var _visual_h := 0.9         # görsel yükseklik (etiket konumu için)
 var _is_sprite := false
@@ -66,87 +72,51 @@ func setup(class_key: StringName, stat_text: String, scale_mul: float = 1.0, spr
 	_status_label.position.y = _visual_h + 0.12
 	add_child(_status_label)
 
-## Bayrak/hedef nişanı (§B.0/1): alçak taş kaide + ince gönder + dalgalanan
-## takım rengi sancak bezi. side_blue=true oyuncu (mavi), false düşman (kızıl).
+## Bayrak/hedef nişanı (§B.0/1): elle boyanmış sancak sprite'ı (Onur art'ı) —
+## mavi=oyuncu, kızıl=düşman (mavinin R↔B recolor'u). Sadece KUMAŞ bandı
+## flag_wave shader'ıyla hafifçe dalgalanır; gönder/kaide sabit.
+const FLAG_BLUE := preload("res://assets/props/flag_blue.png")
+const FLAG_RED := preload("res://assets/props/flag_red.png")
+const FLAG_WAVE := preload("res://shaders/flag_wave.gdshader")
+
 func setup_flag(side_blue: bool, hp: int) -> void:
 	_is_flag = true
-	var tint := Color(0.36, 0.55, 0.85) if side_blue else Color(0.78, 0.30, 0.26)
-	var root := Node3D.new()
-	# alçak taş kaide
-	var ped := MeshInstance3D.new()
-	var pm := BoxMesh.new(); pm.size = Vector3(0.36, 0.10, 0.36)
-	ped.mesh = pm; ped.position.y = 0.05
-	ped.material_override = _mono_mat(Color(0.30, 0.30, 0.34))
-	root.add_child(ped)
-	# gönder — ince, koyu ahşap
-	var POLE_H := 1.35
-	var pole := MeshInstance3D.new()
-	var plm := CylinderMesh.new()
-	plm.top_radius = 0.024; plm.bottom_radius = 0.036; plm.height = POLE_H
-	plm.radial_segments = 6
-	pole.mesh = plm; pole.position.y = 0.10 + POLE_H * 0.5
-	pole.material_override = _mono_mat(Color(0.17, 0.13, 0.10))
-	root.add_child(pole)
-	# tepe ucu (altın mızrak ucu, hafif parlar)
-	var tip := MeshInstance3D.new()
-	var tm := CylinderMesh.new()
-	tm.top_radius = 0.0; tm.bottom_radius = 0.05; tm.height = 0.16
-	tm.radial_segments = 6
-	tip.mesh = tm; tip.position.y = 0.10 + POLE_H + 0.08
-	var tipmat := _mono_mat(Color(0.85, 0.70, 0.38))
-	tipmat.set_shader_parameter("emission_color", Color(1.0, 0.85, 0.5))
-	tipmat.set_shader_parameter("emission_strength", 0.4)
-	tip.material_override = tipmat
-	root.add_child(tip)
-	# sancak bezi — gönder üstünden yana sarkan ince kumaş; pivot direkte
-	var banner := Node3D.new()
-	banner.position = Vector3(0, 0.10 + POLE_H - 0.05, 0)
-	var cloth := MeshInstance3D.new()
-	var cm := BoxMesh.new(); cm.size = Vector3(0.52, 0.40, 0.03)
-	cloth.mesh = cm
-	cloth.position = Vector3(0.28, -0.20, 0)
-	var bmat := _mono_mat(tint)
-	bmat.set_shader_parameter("emission_color", tint)
-	bmat.set_shader_parameter("emission_strength", 0.3)
-	cloth.material_override = bmat
-	banner.add_child(cloth)
-	root.add_child(banner)
-	# rüzgarda hafif salınım (gönder ekseni etrafında)
-	var sway := create_tween().set_loops()
-	sway.tween_property(banner, "rotation:y", deg_to_rad(16.0), 1.7) \
-		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	sway.tween_property(banner, "rotation:y", deg_to_rad(-12.0), 1.7) \
-		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	add_child(root)
-	_visual = root
-	_visual_h = 1.62
-	_is_sprite = false
-	_add_blob_shadow(0.85)
-	# büyük CAN göstergesi
+	var tex: Texture2D = FLAG_BLUE if side_blue else FLAG_RED
+	var sprite := Sprite3D.new()
+	sprite.texture = tex
+	sprite.billboard = BaseMaterial3D.BILLBOARD_DISABLED   # shader'da billboard
+	sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISABLED
+	sprite.no_depth_test = false
+	var mat := ShaderMaterial.new()
+	mat.shader = FLAG_WAVE
+	mat.set_shader_parameter("tex", tex)
+	sprite.material_override = mat
+	# ~1.75 dünya boyu; ayaklar tile yüzeyinde (y=0), yatayda ortalı
+	const FLAG_WORLD_H := 1.75
+	var px := FLAG_WORLD_H / float(tex.get_height())
+	sprite.pixel_size = px
+	var world_h := tex.get_height() * px
+	sprite.position.y = world_h * 0.5
+	add_child(sprite)
+	_visual = sprite
+	_visual_h = world_h
+	_is_sprite = true            # hit_flash sprite modulate yolunu kullansın
+	_add_blob_shadow(0.7)
+	# CAN göstergesi — bayrağın DİBİNDE (kaide önünde), büyük sayı olarak
 	_flag_hp_label = Label3D.new()
 	_flag_hp_label.text = str(hp)
 	_flag_hp_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_flag_hp_label.no_depth_test = true
-	_flag_hp_label.pixel_size = 0.007
+	_flag_hp_label.pixel_size = 0.0075
 	_flag_hp_label.font = UITheme.body_font()
 	_flag_hp_label.font_size = 56
 	_flag_hp_label.outline_size = 12
 	_flag_hp_label.modulate = Color(0.95, 0.55, 0.5) if not side_blue else Color(0.65, 0.8, 1.0)
-	_flag_hp_label.position.y = _visual_h + 0.45
+	# kaidenin ÖNÜNDE, tile yüzeyinde — taş kaidenin arkasında kalmasın (Onur: "can
+	# assetin altında kalıyor"). Kameraya doğru (+z) itilir, no_depth_test üstte çizer.
+	_flag_hp_label.position = Vector3(0, 0.04, 0.62)
 	add_child(_flag_hp_label)
 	_max_hp = hp
-
-func _mono_mat(color: Color) -> ShaderMaterial:
-	var m := ShaderMaterial.new()
-	m.shader = TOON
-	m.set_shader_parameter("top_color", color)
-	m.set_shader_parameter("use_side_split", false)
-	m.set_shader_parameter("mottle_strength", 0.18)
-	var outline := ShaderMaterial.new()
-	outline.shader = OUTLINE
-	outline.set_shader_parameter("grow", 0.04)
-	m.next_pass = outline
-	return m
 
 func _setup_capsule(class_key: StringName, scale_mul: float) -> void:
 	var color: Color = CLASS_COLORS.get(class_key, Color.GRAY)
@@ -187,10 +157,14 @@ func _setup_sprite(path: String, scale_mul: float) -> void:
 	# Kutuya-sığdır: genişlik tile diamond'ının (ekran √2≈1.41) altında kalsın ki
 	# komşu karelere taşmasın; boy MAX_H'yi aşmasın. En kısıtlayan eksen belirler.
 	# Ayaklar tile yüzeyinde (görsel altı y=0), yatayda ortalı (art zaten ortalı).
+	# Per-sprite ölçek: asa/ok kılıflı görseller (okcu/priest/sifaci…) çerçeveyi
+	# kuzu kadar doldurmadığından büyütülür; kuzu referans (1.0).
+	var key := path.get_file().get_basename()
+	var extra: float = SPRITE_SCALE.get(key, 1.12)
 	const SPRITE_MAX_W := 1.2
 	const SPRITE_MAX_H := 1.45
-	var px := minf(SPRITE_MAX_W * scale_mul / float(tex.get_width()),
-		SPRITE_MAX_H * scale_mul / float(tex.get_height()))
+	var px := minf(SPRITE_MAX_W * scale_mul * extra / float(tex.get_width()),
+		SPRITE_MAX_H * scale_mul * extra / float(tex.get_height()))
 	sprite.pixel_size = px
 	var world_h := tex.get_height() * px
 	sprite.position.y = world_h * 0.5
@@ -241,7 +215,7 @@ func _add_shadow_quad(size: Vector2, pos: Vector3, yaw: float, alpha: float) -> 
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.albedo_texture = preload("res://assets/blob_shadow.png")
+	mat.albedo_texture = preload("res://assets/ui/blob_shadow.png")
 	mat.albedo_color = Color(0, 0, 0, alpha)
 	shadow.material_override = mat
 	shadow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -311,6 +285,35 @@ func hit_flash(dur: float) -> void:
 	shake.tween_property(_visual, "position:x", 0.06, dur * 0.25) \
 		.set_trans(Tween.TRANS_SINE)
 	shake.tween_property(_visual, "position:x", 0.0, dur * 0.75) \
+		.set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+
+## Çarpılma (şimşek): mavi-beyaz hızlı flicker + yanal jitter (elektrik çarpması).
+func zap_flash(dur: float) -> void:
+	if _is_sprite:
+		var sprite := _visual as Sprite3D
+		var tw := create_tween()
+		for c in [Color(0.7, 0.9, 1.4), Color.WHITE, Color(0.6, 0.85, 1.4), Color.WHITE]:
+			tw.tween_property(sprite, "modulate", c, dur * 0.18)
+		tw.tween_property(sprite, "modulate", Color.WHITE, dur * 0.28)
+	elif _mat != null:
+		_mat.set_shader_parameter("emission_color", Color(0.6, 0.85, 1.5))
+		_mat.set_shader_parameter("emission_strength", 2.2)
+		var tw := create_tween()
+		tw.tween_property(_mat, "shader_parameter/emission_strength", 0.0, dur)
+	var j := create_tween()
+	for i in 5:
+		j.tween_property(_visual, "position:x", (0.05 if i % 2 == 0 else -0.05), dur * 0.1) \
+			.set_trans(Tween.TRANS_SINE)
+	j.tween_property(_visual, "position:x", 0.0, dur * 0.12)
+
+## Darbe ezilmesi (squash & stretch): görsel anlık ezilip elastikçe toparlanır.
+## amount = ezme miktarı (0.1 hafif, 0.35 ağır). Ağır vuruş = daha çok ezme.
+func squash(amount: float, dur: float) -> void:
+	var sq := Vector3(1.0 + amount, 1.0 - amount, 1.0 + amount)
+	var tw := create_tween()
+	tw.tween_property(_visual, "scale", sq, dur * 0.28) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(_visual, "scale", Vector3.ONE, dur * 0.72) \
 		.set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 
 ## Ölüm: küçülerek yok ol

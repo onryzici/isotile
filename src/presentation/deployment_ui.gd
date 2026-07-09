@@ -28,8 +28,9 @@ const BAR_BG := Color(0.05, 0.05, 0.075, 0.94)
 var battle_button: Button
 var _cmd_button: Button      # kumandan yeteneği (§B.0/4)
 
+static var _howto_shown := false   # "Nasıl Oynanır" oturumda bir kez otomatik açılır
 var _root: Control
-var _cards: Array[Button] = []
+var _cards: Array[UnitCard] = []
 var _mevzi_label: Label      # üst bar Mevzi değeri
 var _gold_label: Label       # üst bar Altın değeri
 var _round_label: Label      # üst bar Tur değeri
@@ -55,7 +56,7 @@ func build(squad: Array) -> void:
 	add_child(_root)
 
 	# ── Alt bar çerçevesi (kartların/kontrollerin arkasında durur) ──
-	_botbar = _make_bar(Control.PRESET_BOTTOM_WIDE, 98, true)
+	_botbar = _make_bar(Control.PRESET_BOTTOM_WIDE, 132, true)
 	_root.add_child(_botbar)
 
 	# ── Üst bar: altın · mevzi (sol) | başlık (orta) | tur · menü (sağ) ──
@@ -97,7 +98,8 @@ func build(squad: Array) -> void:
 	_round_label = turn_chip.get_child(1)
 	_round_label.text = "1"
 	right.add_child(turn_chip)
-	# İşlevsel menü ikonları: sefer durumu · kılavuz · menü
+	# İşlevsel menü ikonları: nasıl oynanır · sefer durumu · kılavuz · menü
+	right.add_child(_make_help_button())
 	right.add_child(_make_icon_button(IC_MAP, _open_status, "Sefer Durumu"))
 	right.add_child(_make_icon_button(IC_BOOK, _open_codex, "Kılavuz"))
 	right.add_child(_make_icon_button(IC_MENU, _open_menu, "Menü"))
@@ -122,20 +124,11 @@ func build(squad: Array) -> void:
 
 	for i in squad.size():
 		var piece: PieceData = squad[i]
-		var btn := Button.new()
-		var traits_line := piece.trait_names()
-		btn.text = "%s\n%s  (%s)\n%s\nMevzi %d" % [piece.ad, piece.stat_text(),
-			SINIF_AD[piece.sinif], traits_line if traits_line != "" else "—", piece.mevzi_maliyeti]
-		btn.custom_minimum_size = Vector2(165, 108)
-		btn.focus_mode = Control.FOCUS_NONE
-		# Tooltip: tabya açıklamaları (canlı Güç×Kat dökümü M1 cilasında — §19)
-		var tips: Array[String] = []
-		for t in piece.base_traits:
-			tips.append("%s: %s" % [t.ad, t.aciklama])
-		btn.tooltip_text = "\n".join(tips)
-		btn.pressed.connect(_on_card_button.bind(i))
-		_bar.add_child(btn)
-		_cards.append(btn)
+		var card := UnitCard.new()
+		card.setup(piece, i)
+		card.pressed.connect(_on_card_button.bind(i))
+		_bar.add_child(card)
+		_cards.append(card)
 
 	battle_button = Button.new()
 	battle_button.text = "SAVAŞ"
@@ -164,6 +157,11 @@ func build(squad: Array) -> void:
 	_root.add_child(_cmd_button)
 
 	_build_speed_controls()
+
+	# İlk savaşta "Nasıl Oynanır" otomatik açılır (oturumda bir kez)
+	if not _howto_shown:
+		_howto_shown = true
+		_open_how_to_play.call_deferred()
 
 func _build_speed_controls() -> void:
 	_speed_box = HBoxContainer.new()
@@ -206,15 +204,12 @@ func _make_bar(preset: int, height: float, border_top: bool) -> Panel:
 		p.offset_top = -height   # BOTTOM_WIDE
 	else:
 		p.offset_bottom = height  # TOP_WIDE
-	# Bar'ın iç kenarına (üst bar → alt kenar, alt bar → üst kenar) süslü ayraç
-	var div := _make_divider()
-	if border_top:
-		div.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE, Control.PRESET_MODE_MINSIZE)
-		div.offset_bottom = DIVIDER_H
-	else:
+	# Süslü ayraç YALNIZ üst barda (alt bar sade — Onur: alt çizgi olmasın).
+	if not border_top:
+		var div := _make_divider()
 		div.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE, Control.PRESET_MODE_MINSIZE)
 		div.offset_top = -DIVIDER_H
-	p.add_child(div)
+		p.add_child(div)
 	return p
 
 ## Süslü yatay ayraç: ince altın çizgi + uçlarda/ortada elmas düğüm (referans stil).
@@ -356,6 +351,76 @@ func _open_modal(title_text: String, min_w: float, build_body: Callable) -> void
 	col.add_child(div)
 
 	build_body.call(col)
+
+# ---- Nasıl Oynanır (yeni oyuncu rehberi) ----
+
+## Üst bardaki "?" yardım butonu
+func _make_help_button() -> Button:
+	var b := Button.new()
+	b.text = "?"
+	b.tooltip_text = "Nasıl Oynanır"
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(30, 30)
+	b.add_theme_font_size_override("font_size", 20)
+	var empty := StyleBoxEmpty.new()
+	for state in ["normal", "hover", "pressed", "focus"]:
+		b.add_theme_stylebox_override(state, empty)
+	b.add_theme_color_override("font_color", Color(0.70, 0.65, 0.55))
+	b.add_theme_color_override("font_hover_color", Color(1.0, 0.9, 0.6))
+	b.pressed.connect(_open_how_to_play)
+	return b
+
+func _open_how_to_play() -> void:
+	_open_modal("Nasıl Oynanır", 660, func(col: VBoxContainer) -> void:
+		var scroll := ScrollContainer.new()
+		scroll.custom_minimum_size = Vector2(620, 480)
+		scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		col.add_child(scroll)
+		var body := VBoxContainer.new()
+		body.add_theme_constant_override("separation", 16)
+		body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		scroll.add_child(body)
+
+		_codex_para(body, "Amaç",
+			"Karşı uçtaki KIRMIZI düşman bayrağını yık — kazanırsın. Kendi MAVİ "
+			+ "bayrağının canı KALICIDIR: sefer boyunca taşınır, 0 olursa sefer biter. "
+			+ "Yani her savaş bayrağını korumak kadar düşmanınkini yıkmakla ilgili.")
+
+		_codex_list(body, "Nasıl oynanır (adım adım)", [
+			["1 · Diz", "Alttaki karttan bir birim seç, sonra YEŞİL parlayan tile'a tıkla "
+				+ "(alt satırlar senin bölgen)."],
+			["2 · Düzenle", "Yerleşik birime tıkla → taşı. Sağ tık → geri al. Menzillileri "
+				+ "arkaya, tankları öne koy."],
+			["3 · Savaş", "SAVAŞ'a bas. Birimler HIZ sırasına göre (yüksek önce) OTOMATİK "
+				+ "hareket eder: düşmana yürür, komşusuna saldırır. Sen izlersin (1x/2x/Atla)."],
+		])
+
+		_codex_para(body, "Mevzi — dizme bütçen",
+			"Üst soldaki 🛡 sayı = elindeki MEVZİ (dizme bütçesi). Her birim kartının sağ "
+			+ "üstünde 🛡 ile maliyeti yazar. Bir birimi dizince maliyeti kadar Mevzi harcanır; "
+			+ "bütçen yetmeyen kartlar SOLUK görünür (dizemezsin). Her tur biraz Mevzi geri "
+			+ "gelir. Yani: az maliyetli çok birim mi, pahalı güçlü birim mi — sen seç.")
+
+		_codex_para(body, "Güç × Kat — hasarın sırrı",
+			"Bir vuruşun hasarı: (Saldırı + tüm Güç bonusları) × tüm Kat çarpanları. "
+			+ "Güç TOPLANIR (ucuz, bol); Kat ÇARPAR (nadir, güçlü). Doğru komşuluk ve "
+			+ "tabya dizilimi Kat'ı besler → hasar KATLANIR. Bir birimin üzerine gelince "
+			+ "canlı döküm açılır: neden o kadar vurduğunu gösterir.")
+
+		_codex_list(body, "Sınıflar", [
+			["Yakın", "Bitişik düşmana vurur; yoksa ona doğru yürür."],
+			["Menzilli", "Yerinde durur, menzilindeki en yakın düşmanı vurur."],
+			["Destek", "Saldırmaz; komşu dostları güçlendirir / iyileştirir."],
+		])
+
+		_codex_list(body, "Okuma ipuçları", [
+			["Stat plakası", "Her birimde 3 sayı: ⚔ Saldırı (turuncu) · ♥ Can (kırmızı) · "
+				+ "⚡ Hız (mavi)."],
+			["Telegraph", "Düşmanın üstündeki ok/işaret ilk turda ne yapacağını gösterir "
+				+ "(kırmızı = vuracağı tile)."],
+			["Sinerji", "Aynı etikete/tabyaya sahip birimleri yan yana diz — bonuslar "
+				+ "birbirini besler."],
+		]))
 
 # ---- Menü (duraklat / ayarlar) ----
 
@@ -527,15 +592,19 @@ func hide_breakdown() -> void:
 	_breakdown_panel = null
 
 ## Bir birimin vuruş hasarını kaynak kaynak göster: (Taban + Güç) × Kat = hasar.
-## bd: CombatResolver.compute_breakdown() çıktısı.
-func show_breakdown(unit_name: String, bd: Dictionary) -> void:
+## bd: CombatResolver.compute_breakdown() çıktısı. anchor: birimin EKRAN pozisyonu
+## (dünya→unproject); panel birimin yanında açılır, kenara taşarsa akıllı kayar.
+func show_breakdown(unit_name: String, bd: Dictionary, anchor: Vector2 = Vector2(-1, -1)) -> void:
 	hide_breakdown()
 	_breakdown_panel = PanelContainer.new()
 	_breakdown_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_breakdown_panel.set_anchors_and_offsets_preset(
-		Control.PRESET_CENTER_LEFT, Control.PRESET_MODE_MINSIZE)
-	_breakdown_panel.offset_left = 16
-	_breakdown_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	# Düz pano (kart diliyle uyumlu — hap/gölge yok)
+	var pbox := StyleBoxFlat.new()
+	pbox.bg_color = Color(0.07, 0.065, 0.095, 0.97)
+	pbox.border_color = Color(0.42, 0.35, 0.24)
+	pbox.set_border_width_all(1)
+	pbox.set_corner_radius_all(2)
+	_breakdown_panel.add_theme_stylebox_override("panel", pbox)
 	_root.add_child(_breakdown_panel)
 
 	var pad := MarginContainer.new()
@@ -599,6 +668,31 @@ func show_breakdown(unit_name: String, bd: Dictionary) -> void:
 			l.add_theme_color_override("font_color", Color(0.6, 0.7, 0.8, 0.85))
 			l.custom_minimum_size = Vector2(204, 0)
 			col.add_child(l)
+
+	_place_breakdown(anchor)
+
+## Döküm panelini birimin yanında konumla; kenara taşarsa öbür yana/clamp'e kay.
+func _place_breakdown(anchor: Vector2) -> void:
+	var sz := _breakdown_panel.get_combined_minimum_size()
+	var vp: Vector2 = get_viewport().get_visible_rect().size
+	var pos: Vector2
+	if anchor.x < 0:
+		# Çapa yok → eski davranış: sol-orta
+		pos = Vector2(16, vp.y * 0.5 - sz.y * 0.5)
+	else:
+		var gap := 52.0
+		# Yatay: birimin sağına; birim sağ yarıdaysa soluna
+		if anchor.x < vp.x * 0.5:
+			pos.x = anchor.x + gap
+		else:
+			pos.x = anchor.x - gap - sz.x
+		# Dikey: birime ortala
+		pos.y = anchor.y - sz.y * 0.5
+		# Ekran kenarına clamp
+		pos.x = clampf(pos.x, 12.0, vp.x - sz.x - 12.0)
+		pos.y = clampf(pos.y, 70.0, vp.y - sz.y - 12.0)
+	_breakdown_panel.size = sz
+	_breakdown_panel.position = pos
 
 func _bd_row(parent: VBoxContainer, label: String, value: String, col: Color, bold: bool = false) -> void:
 	var row := HBoxContainer.new()
@@ -808,6 +902,9 @@ func show_result(player_won: bool) -> void:
 
 func set_mevzi(value: int) -> void:
 	_mevzi_label.text = str(value)
+	# Mevzi bütçesine göre kartların karşılanabilirliğini güncelle (öğretici görsellik)
+	for c in _cards:
+		c.set_affordable(c._cost <= value)
 
 func set_gold(value: int) -> void:
 	_gold_label.text = str(value)
@@ -817,8 +914,7 @@ func set_title(text: String) -> void:
 
 func set_selected(index: int) -> void:
 	for i in _cards.size():
-		_cards[i].modulate = Color(1.0, 0.95, 0.5) if i == index else Color.WHITE
+		_cards[i].set_selected_state(i == index)
 
 func set_card_deployed(index: int, deployed: bool) -> void:
-	_cards[index].disabled = deployed
-	_cards[index].modulate = Color(1, 1, 1, 0.5) if deployed else Color.WHITE
+	_cards[index].set_deployed_state(deployed)

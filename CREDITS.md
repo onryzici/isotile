@@ -28,3 +28,14 @@ Tüm müzik ve ses efektleri bu proje için **prosedürel olarak üretilmiştir*
 
 ## Motor
 - Godot Engine 4.7 (MIT).
+
+## Ses Efektleri (SoundBible — CC BY 3.0)
+- Ok atışı — "Draw Bow and Fire" (soundbible.com id 2106)
+- Vuruş — "Realistic Punch" by Mark DiAngelo (id 2069)
+- Yanma/alev — "Fire Burning" (id 1902)
+- Elektrik/şimşek — "Electricity" (id 1107)
+- Savaş narası — "Billy Goat Bleat" (SoundBible id 821)
+
+## Müzik
+- Savaş: "The Last Stand"
+- Ölüm çığlığı — "Scream And Die Fx" (SoundBible id 259)
