@@ -81,7 +81,8 @@ func _advance_from(step: int) -> void:
 		_complete()
 		return
 	_show_step()
-	# adım geçişi: küçük pop
+	# adım geçişi: küçük pop (pivot merkez — layout sonrası boyut bilinir)
+	_panel.pivot_offset = _panel.size * 0.5
 	_panel.scale = Vector2(1.06, 1.06)
 	var tw := _panel.create_tween()
 	tw.tween_property(_panel, "scale", Vector2.ONE, 0.18) \
