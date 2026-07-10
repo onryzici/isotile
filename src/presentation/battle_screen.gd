@@ -380,7 +380,7 @@ func _debug_flag_geometry() -> void:
 
 ## Boss düğümlerinde düşman bayrağının YERİNE ejderha durur — zafer koşulu aynı
 ## (§B.0/1: karşı bayrağı yık). Ejderha ayrıca saldırır ve tutuşturur (CombatUnit.make_boss).
-const BOSS_ENCOUNTERS: Array[StringName] = [&"boss", &"boss2"]
+const BOSS_ENCOUNTERS: Array[StringName] = [&"boss", &"boss2", &"boss3"]
 const BOSS_ATK := 6
 const BOSS_SPD := 5
 
@@ -390,8 +390,10 @@ func _is_boss_encounter() -> bool:
 ## Düşman tarafının "yıkılacak hedefi": normal savaşta bayrak, boss'ta ejderha
 func _make_enemy_anchor(uid: int) -> CombatUnit:
 	if _is_boss_encounter():
+		# son boss (Kurt İni) bir diş daha sert vurur
+		var atk := BOSS_ATK + (1 if GameState.current_encounter == &"boss3" else 0)
 		return CombatUnit.make_boss(CombatResolver.SIDE_ENEMY, _enemy_flag_coord,
-			_enemy_flag_hp, uid, BOSS_ATK, BOSS_SPD, "Ejderha")
+			_enemy_flag_hp, uid, atk, BOSS_SPD, "Ejderha")
 	return CombatUnit.make_flag(CombatResolver.SIDE_ENEMY, _enemy_flag_coord,
 		_enemy_flag_hp, uid, "Düşman Bayrağı")
 

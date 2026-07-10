@@ -76,7 +76,53 @@ const DEFS := {
 		"heights": {Vector2i(2, 4): 1, Vector2i(3, 4): 1},
 		"gold": 75,
 	},
+	# 3. bölge — Kurt İni: tarikat havuzu (kurt sürüsü + şifacı rahipler)
+	&"orta4": {
+		"enemies": {Vector2i(1, 3): &"kurt_muridi", Vector2i(4, 3): &"kurt_muridi",
+			Vector2i(0, 4): &"golge_okcu", Vector2i(3, 4): &"tarikat_rahibi"},
+		"terrain": {Vector2i(2, 2): &"pus", Vector2i(3, 2): &"lav", Vector2i(5, 1): &"kutsal"},
+		"heights": {Vector2i(4, 3): 1},
+		"gold": 28,
+	},
+	&"orta5": {
+		"enemies": {Vector2i(2, 3): &"kadim_kurt", Vector2i(0, 3): &"kurt_muridi",
+			Vector2i(5, 3): &"kurt_muridi", Vector2i(3, 4): &"tarikat_rahibi"},
+		"terrain": {Vector2i(1, 2): &"diken", Vector2i(4, 2): &"diken",
+			Vector2i(2, 2): &"pus", Vector2i(3, 2): &"pus"},
+		"heights": {Vector2i(2, 3): 1},
+		"gold": 30,
+	},
+	&"elit3": {
+		"enemies": {Vector2i(1, 3): &"kadim_kurt", Vector2i(4, 3): &"kadim_kurt",
+			Vector2i(2, 4): &"tarikat_rahibi", Vector2i(3, 4): &"tarikat_rahibi",
+			Vector2i(2, 3): &"golge_okcu"},
+		"terrain": {Vector2i(0, 2): &"lav", Vector2i(5, 2): &"lav",
+			Vector2i(2, 2): &"pus", Vector2i(3, 2): &"pus"},
+		"heights": {Vector2i(1, 3): 1, Vector2i(4, 3): 1},
+		"gold": 55,
+	},
+	&"boss3": {
+		"enemies": {Vector2i(2, 3): &"kadim_kurt", Vector2i(3, 3): &"lanetli_sovalye",
+			Vector2i(0, 3): &"kurt_muridi", Vector2i(5, 3): &"kurt_muridi",
+			Vector2i(1, 4): &"tarikat_rahibi", Vector2i(4, 4): &"tarikat_rahibi",
+			Vector2i(2, 4): &"golge_okcu"},
+		"terrain": {Vector2i(1, 2): &"lav", Vector2i(4, 2): &"lav",
+			Vector2i(2, 2): &"pus", Vector2i(3, 2): &"pus",
+			Vector2i(0, 1): &"kutsal", Vector2i(5, 1): &"kutsal"},
+		"heights": {Vector2i(2, 4): 1, Vector2i(3, 4): 1},
+		"gold": 90,
+	},
 }
+
+## Bölge sınırları: katman → bölge index'i (harita adı + ileride bioma seçimi)
+const REGION_STARTS := [0, 6, 10]
+
+static func region_of(layer: int) -> int:
+	var r := 0
+	for i in REGION_STARTS.size():
+		if layer >= REGION_STARTS[i]:
+			r = i
+	return r
 
 ## Bölge haritası şablonu (§2): alttan üste katmanlar; katmandaki
 ## düğümlerden biri seçilir. Gerçek KARABASAN boss'u M3'te.
@@ -99,6 +145,16 @@ const MAP_TEMPLATE := [
 	[{"type": &"revir", "ad": "Sahra Revan"}, {"type": &"kitapci", "ad": "Kitapçı"},
 		{"type": &"daragaci", "ad": "Darağacı"}],
 	[{"type": &"boss", "enc": &"boss2", "ad": "BOSS"}],
+	# 3. bölge — Kurt İni
+	[{"type": &"savas", "enc": &"orta4", "ad": "Savaş"}, {"type": &"dukkan", "ad": "Dükkan"},
+		{"type": &"nitelik", "ad": "Nitelik Dükkanı"}],
+	[{"type": &"olay", "ad": "Olay"}, {"type": &"savas", "enc": &"orta5", "ad": "Savaş"},
+		{"type": &"meydan", "ad": "Meydan"}],
+	[{"type": &"elit", "enc": &"elit3", "ad": "ELİT"}, {"type": &"mezar", "ad": "Gri Mezar"},
+		{"type": &"yadigar", "ad": "Yadigar Dükkanı"}],
+	[{"type": &"revir", "ad": "Sahra Revan"}, {"type": &"saman", "ad": "Şaman Çadırı"},
+		{"type": &"kitapci", "ad": "Kitapçı"}],
+	[{"type": &"boss", "enc": &"boss3", "ad": "BOSS"}],
 ]
 
 ## Düşman bayrağı CAN'ı (§B.0/1) — zorlukla ölçeklenir
@@ -107,6 +163,7 @@ const MAP_TEMPLATE := [
 const FLAG_HP := {
 	&"kolay": 16, &"orta": 20, &"orta2": 22, &"elit": 30, &"boss": 70,
 	&"orta3": 26, &"elit2": 34, &"boss2": 95,
+	&"orta4": 30, &"orta5": 32, &"elit3": 40, &"boss3": 125,
 }
 
 static func get_def(id: StringName) -> Dictionary:

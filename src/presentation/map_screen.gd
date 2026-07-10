@@ -54,7 +54,7 @@ const TYPE_COL := {
 	&"daragaci": Color(0.62, 0.30, 0.26), &"meydan": Color(0.84, 0.52, 0.6),
 	&"kitapci": Color(0.72, 0.58, 0.38),
 }
-const REGION_NAMES := ["I · PUS ORMANI", "II · KEMİK BATAKLIĞI"]
+const REGION_NAMES := ["I · PUS ORMANI", "II · KEMİK BATAKLIĞI", "III · KURT İNİ"]
 
 var _origin := Vector2.ZERO
 var _terrain: Array[Vector2i] = []
@@ -349,7 +349,7 @@ func _build_hud() -> void:
 	bar.offset_bottom = 60
 	_root.add_child(bar)
 
-	var region := REGION_NAMES[0] if GameState.layer_index < 6 else REGION_NAMES[1]
+	var region: String = REGION_NAMES[Encounters.region_of(GameState.layer_index)]
 	var title := Label.new()
 	title.theme_type_variation = "Title"
 	title.text = region
