@@ -285,7 +285,7 @@ func _ctx() -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = GameState.run_seed ^ hash(GameState.current_encounter) ^ (GameState.layer_index << 16)
 	return {"heights": board.height_map, "terrain": _terrain_setup,
-		"relics": GameState.relics, "rng": rng}
+		"relics": GameState.relics + GameState.armed_items, "rng": rng}
 
 ## mesh_id doluysa sprite yolu (§16.5 billboard birim), boşsa kapsül
 func _sprite_path(piece: PieceData) -> String:
@@ -894,6 +894,7 @@ func _finish_battle() -> void:
 		GameState.gold += _enc_gold + GameState.relic_sum(&"altin_bonus")   # zafer altını (§21)
 	if _battle_player_flag != null:
 		GameState.apply_flag_result(_battle_player_flag.hp)   # kalıcı bayrak CAN'ı (§B.0/2)
+	GameState.consume_armed_items()   # kuşanılmış item'lar bu savaşla tükendi
 	ui.show_result(player_won)
 	EventBus.battle_finished.emit(player_won)
 	AudioDirector.play_sfx(&"victory" if player_won else &"defeat")

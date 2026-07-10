@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="ItemData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/logic/item_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"boru_cagrisi"
+ad = "Boru Çağrısı"
+aciklama = "Eski sefer borusu; sürü hızlı dizilir. Kuşan: sonraki savaşta tur başı +2 Mevzi."
+fiyat = 14
+tur = 1
+mevzi_bonus = 2

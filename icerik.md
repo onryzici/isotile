@@ -232,8 +232,7 @@ alt ödül şeridi. Yeni hizmet düğümü eklerken NodeDiorama'dan türet.
 | **Darağacı** (`daragaci`) | `gallows_screen.gd` | Kurban seç (tabyalı) → mirasçı seç → İNFAZ: kurbanın tabyaları mirasçının boş slotlarına geçer, kurban kadrodan çıkar (`remove_unit` — kalan birimlerin CAN'ı korunur). Deste inceltme + tabya taşıma. |
 | **Meydan / Talim Kumarı** (`meydan`) | `saloon_screen.gd` | Kuzu seç → statları seed'li yeniden dağılır (kumar) + armağan: Upgrade VEYA Söylenti (§2b). Beğenmezsen **1 zar** ile yeniden çevir. Zar elması kuzunun kafasının üstünde döner. |
 
-> **Kitapçı** (item satışı) BEKLEMEDE: item sistemi kodda yok (bkz. §7). Campsite/Kaynak
-> göreviyle birlikte gelecek.
+| **Kitapçı** (`kitapci`) | `bookstore_screen.gd` | 3 seed'li item kaidesi; altınla al (çanta ≤3). **Stok Çevir: 1 zar.** Bölge başına 1 düğüm. |
 
 **Sefer dışı diyoramalar:**
 - **Ağıl Meydanı** (`hub_screen.gd`, debug `--hub`) — sefer öncesi hub (gelistirme §2).
@@ -251,6 +250,30 @@ alt ödül şeridi. Yeni hizmet düğümü eklerken NodeDiorama'dan türet.
 
 ---
 
+## 6c. ITEMLAR — 8 adet, hepsi çalışıyor
+
+**Veri:** `data/items/*.tres` · **Model:** `src/logic/item_data.gd` (**RelicData'yı genişletir**)
+
+Tek kullanımlık. Kaynak: Kitapçı düğümü. Çanta: `GameState.items`, kapasite **3** (`ITEM_CAP`).
+Harita HUD'unda sol altta şerit — tıkla:
+- **ANINDA** (`tur=0`): etki hemen işler (bölük CAN / sancak / zar).
+- **SONRAKI_SAVAS** (`tur=1`): kuşanılır (`armed_items`) → bir sonraki savaşta miras relic
+  alanları tek savaşlık işler (`battle_screen._ctx` relics + `relic_sum`), savaş sonu tükenir
+  (`consume_armed_items`, zafer/yenilgi fark etmez). Kayıtta `item_ids` + `armed_item_ids`.
+
+| id | Ad | Fiyat | Tür | Etki |
+|---|---|---|---|---|
+| `sans_kemigi` | Şans Kemiği | 10 | ANINDA | +2 zar |
+| `sargi_denkleri` | Sargı Denkleri | 12 | ANINDA | bölük tam CAN |
+| `sancak_yamasi` | Sancak Yaması | 14 | ANINDA | sancak +6 (cap'e kadar) |
+| `kuru_erzak` | Kuru Erzak | 18 | ANINDA | bölük tam CAN + sancak +3 |
+| `bileme_tasi` | Bileme Taşı | 12 | SONRAKİ | +2 Güç (tek savaş) |
+| `kalkan_yagi` | Kalkan Yağı | 12 | SONRAKİ | savaş başı +6 Kalkan |
+| `boru_cagrisi` | Boru Çağrısı | 14 | SONRAKİ | tur başı +2 Mevzi |
+| `kutsanmis_yag` | Kutsanmış Yağ | 20 | SONRAKİ | ×1.25 Kat |
+
+---
+
 ## 7. TASARIMDA VAR, KODDA YOK
 
 `CLAUDE.md` bunları detaylıca tarif ediyor ama **hiç yazılmadılar.** İçerik ayarlarken
@@ -258,7 +281,6 @@ buralara vakit harcama — önce sistem gerekiyor.
 
 | Sistem | Durum |
 |---|---|
-| **Item sistemi + Kitapçı düğümü** | Kod yok — gelistirme §5. Campsite/Kaynak göreviyle birlikte gelecek |
 | **Lonca / Arşiv / Onur Salonu / Contract** (gelistirme §2) | Ağıl Meydanı'nda kilitli elmas plakalar var; arkasında sistem yok |
 | **Kaynak parası + tesis çeşitliliği** (gelistirme §12) | Garnizon diyoraması 4 tesisli; spec 6-8 tesis + ayrı "Kaynak" parası istiyor (kodda tek meta para: **Kalıntı**) |
 | **Tutorial** (gelistirme §3) | Yok — tek iz "Nasıl Oynanır" modalı |
@@ -268,7 +290,7 @@ buralara vakit harcama — önce sistem gerekiyor.
 | **3.–4. bölge** | Harita şablonu 2 bölge (`encounters.gd MAP_TEMPLATE`); spec 4 istiyor |
 
 > Harita düğümleri (hepsi çalışır): `savas`/`elit`/`boss`/`dukkan`/`olay`/`saman`/`revir`/
-> `mezar`/`nitelik`/`yadigar`/`daragaci`/`meydan`.
+> `mezar`/`nitelik`/`yadigar`/`daragaci`/`meydan`/`kitapci`.
 
 ### Ölü kod
 `game_state.gd:27` `relic_kat()` hiç çağrılmıyor (`global_kat` zaten resolver'da uygulanıyor).

@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="ItemData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/logic/item_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"kuru_erzak"
+ad = "Kuru Erzak"
+aciklama = "Peksimet, kurutulmuş ot, bir tulum su. Kullan: bölük tam CAN + sancak +3."
+fiyat = 18
+tur = 0
+heal_suru = true
+bayrak_onar = 3

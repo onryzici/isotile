@@ -16,12 +16,15 @@ var squad: Array = []                     # PieceData listesi (kadro, run içind
 var squad_hp: Dictionary = {}             # squad index -> güncel CAN
 var mevzi: int = 6                        # savaş başı Mevzi (AP) (§21)
 var relics: Array = []                    # RelicData listesi (run boyu global pasif)
+var items: Array = []                     # ItemData listesi (tek kullanımlık, ≤ ITEM_CAP)
+var armed_items: Array = []               # kuşanılmış SONRAKI_SAVAS item'ları — tek savaşlık relic
+const ITEM_CAP := 3
 var commander_id: StringName = &"cesur"   # seçili kumandan (§B.0/4)
 
 ## Relic alanları toplamı (global_ek_guc, mevzi_bonus, altin_bonus...)
 func relic_sum(field: StringName) -> int:
 	var t := 0
-	for r in relics:
+	for r in relics + armed_items:   # kuşanılmış item = tek savaşlık relic
 		t += r.get(field)
 	return t
 
@@ -86,6 +89,8 @@ func start_new_run(seed_value: int = 0) -> void:
 	zar = 4 + meta_degirmen_lv * 2   # Değirmen (§6): sefer başı zar
 	run_over = false
 	relics = []
+	items = []
+	armed_items = []
 	squad = []
 	for p: PieceData in Database.get_all("pieces"):
 		if p.starter:
@@ -113,6 +118,33 @@ func spend_flag(n: int) -> bool:
 		return false
 	player_flag_hp -= n
 	return true
+
+## Item envanteri (gelistirme §5 Kitapçı). Kapasite ITEM_CAP; doluysa alınamaz.
+func add_item(it: ItemData) -> bool:
+	if items.size() >= ITEM_CAP:
+		return false
+	items.append(it)
+	return true
+
+## Haritadan kullanım: ANINDA hemen işler, SONRAKI_SAVAS kuşanılır (armed).
+func use_item(index: int) -> void:
+	if index < 0 or index >= items.size():
+		return
+	var it: ItemData = items[index]
+	items.remove_at(index)
+	if it.tur == ItemData.Tur.SONRAKI_SAVAS:
+		armed_items.append(it)
+		return
+	if it.heal_suru:
+		heal_all()
+	if it.bayrak_onar > 0:
+		player_flag_hp = mini(flag_cap(), player_flag_hp + it.bayrak_onar)
+	if it.zar_ver > 0:
+		zar += it.zar_ver
+
+## Savaş bitti (zafer/yenilgi fark etmez): kuşanılmış item'lar tükendi
+func consume_armed_items() -> void:
+	armed_items.clear()
 
 ## Savaş sonu: oyuncu bayrağının kalan CAN'ını kalıcı olarak yaz. 0 = run biter.
 func apply_flag_result(remaining_hp: int) -> void:
@@ -207,6 +239,8 @@ func save_run() -> void:
 		"zar": zar,
 		"squad_ids": squad.map(func(p: PieceData) -> String: return String(p.id)),
 		"relic_ids": relics.map(func(r: RelicData) -> String: return String(r.id)),
+		"item_ids": items.map(func(it: ItemData) -> String: return String(it.id)),
+		"armed_item_ids": armed_items.map(func(it: ItemData) -> String: return String(it.id)),
 		"squad_hp": hp,
 		# Şaman yükseltmeleri (§9): id'den yüklenen taban statların üstüne yazılır
 		"squad_stats": squad.map(func(p: PieceData) -> Dictionary:
@@ -240,6 +274,16 @@ func load_run() -> bool:
 	commander_id = StringName(data.get("commander_id", "cesur"))
 	run_over = data.get("run_over", false)
 	zar = int(data.get("zar", 4))
+	items = []
+	for iid in data.get("item_ids", []):
+		var it := Database.get_resource("items", StringName(iid))
+		if it:
+			items.append(it)
+	armed_items = []
+	for iid in data.get("armed_item_ids", []):
+		var ait := Database.get_resource("items", StringName(iid))
+		if ait:
+			armed_items.append(ait)
 	squad = []
 	var stats: Array = data.get("squad_stats", [])
 	var traits: Array = data.get("squad_traits", [])

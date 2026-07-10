@@ -42,6 +42,7 @@ const TYPE_ICON := {
 	&"saman": IC_SHAMAN, &"revir": IC_MEDIC, &"mezar": IC_GRAVE,
 	&"nitelik": IC_TRAIT, &"yadigar": IC_GEM, &"daragaci": IC_GALLOWS,
 	&"meydan": preload("res://assets/icons/dice.svg"),
+	&"kitapci": IC_BOOK,
 }
 const TYPE_COL := {
 	&"savas": Color(0.82, 0.32, 0.27), &"elit": Color(0.92, 0.56, 0.22),
@@ -51,6 +52,7 @@ const TYPE_COL := {
 	&"mezar": Color(0.56, 0.56, 0.62),
 	&"nitelik": Color(0.65, 0.72, 0.35), &"yadigar": Color(0.88, 0.78, 0.42),
 	&"daragaci": Color(0.62, 0.30, 0.26), &"meydan": Color(0.84, 0.52, 0.6),
+	&"kitapci": Color(0.72, 0.58, 0.38),
 }
 const REGION_NAMES := ["I · PUS ORMANI", "II · KEMİK BATAKLIĞI"]
 
@@ -380,6 +382,37 @@ func _build_hud() -> void:
 	menu_btn.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	menu_btn.pressed.connect(_to_menu)
 	_root.add_child(menu_btn)
+
+	# Item çantası (gelistirme §5): sol altta şerit — tıkla → kullan (ANINDA)
+	# ya da kuşan (SONRAKI_SAVAS). Kullanım HUD'u yeniden kurar.
+	var strip := HBoxContainer.new()
+	strip.add_theme_constant_override("separation", 8)
+	strip.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT,
+		Control.PRESET_MODE_MINSIZE, 14)
+	strip.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_root.add_child(strip)
+	for i in GameState.items.size():
+		var it: ItemData = GameState.items[i]
+		var anlik: bool = it.tur == ItemData.Tur.ANINDA
+		var ib := Button.new()
+		ib.text = "%s · %s" % [it.ad, "kullan" if anlik else "kuşan"]
+		ib.tooltip_text = it.aciklama
+		ib.focus_mode = Control.FOCUS_NONE
+		ib.add_theme_font_size_override("font_size", 15)
+		ib.pressed.connect(func() -> void:
+			GameState.use_item(i)
+			AudioDirector.play_sfx(&"deploy_clunk", 0.1)
+			_build())
+		strip.add_child(ib)
+	if not GameState.armed_items.is_empty():
+		var armed := Label.new()
+		var adlar: Array = GameState.armed_items.map(
+			func(a: ItemData) -> String: return a.ad)
+		armed.text = "Kuşanıldı: %s (sonraki savaş)" % ", ".join(adlar)
+		armed.add_theme_font_size_override("font_size", 15)
+		armed.add_theme_color_override("font_color", Color(0.95, 0.8, 0.5))
+		armed.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		strip.add_child(armed)
 
 	var hint := Label.new()
 	hint.text = "Parlayan mavi düğümü seç"

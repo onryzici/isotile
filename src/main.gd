@@ -79,7 +79,8 @@ func _setup_grain() -> void:
 			or "--garrison" in args or "--runend" in args \
 			or "--saman" in args or "--revir" in args or "--mezar" in args \
 			or "--nitelik" in args or "--yadigar" in args or "--daragaci" in args \
-			or "--meydan" in args or "--olay" in args or "--hub" in args:
+			or "--meydan" in args or "--olay" in args or "--hub" in args \
+			or "--kitapci" in args:
 		GameState.start_new_run()
 		for arg in args:
 			if arg.begins_with("--enc="):
@@ -122,6 +123,9 @@ func _setup_grain() -> void:
 		elif "--meydan" in args:
 			_node_type = &"meydan"
 			_show(_make_closable(SaloonScreen.new()))
+		elif "--kitapci" in args:
+			_node_type = &"kitapci"
+			_show(_make_closable(BookstoreScreen.new()))
 		elif "--hub" in args:
 			_show_hub()
 		elif "--olay" in args:
@@ -208,6 +212,8 @@ func _on_map_node(node: Dictionary) -> void:
 			_show(_make_closable(GallowsScreen.new()))
 		&"meydan":
 			_show(_make_closable(SaloonScreen.new()))
+		&"kitapci":
+			_show(_make_closable(BookstoreScreen.new()))
 		_:
 			_show_map()
 

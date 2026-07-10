@@ -98,3 +98,8 @@
   `force_home_biome` (hub her zaman yeşil yuva seti).
 - Garnizon campsite diyoraması: kamp adası + tesis prop'ları (İkmal İstasyonu,
   Atölye, Talimhane, dönen kanatlı Değirmen) + seviye/bedel elmasları. Debug: `--garrison`.
+- Item sistemi + Kitapçı düğümü (gelistirme §5): ItemData (RelicData'yı genişletir),
+  8 item (.tres) — ANINDA (kullan: CAN/sancak/zar) ve SONRAKI_SAVAS (kuşan: tek
+  savaşlık relic etkisi). Harita HUD'unda çanta şeridi; Kitapçı diyoraması
+  (3 seed'li kaide, altınla al, Stok Çevir 1 zar). Bölge başına 1 kitapçı düğümü.
+  Debug: `--kitapci`.

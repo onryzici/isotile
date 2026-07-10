@@ -88,14 +88,15 @@ const MAP_TEMPLATE := [
 		{"type": &"saman", "ad": "Şaman Çadırı"}],
 	[{"type": &"elit", "enc": &"elit", "ad": "ELİT"}, {"type": &"mezar", "ad": "Gri Mezar"},
 		{"type": &"yadigar", "ad": "Yadigar Dükkanı"}],
-	[{"type": &"dukkan", "ad": "Dükkan"}, {"type": &"revir", "ad": "Sahra Revan"}],
+	[{"type": &"dukkan", "ad": "Dükkan"}, {"type": &"revir", "ad": "Sahra Revan"},
+		{"type": &"kitapci", "ad": "Kitapçı"}],
 	[{"type": &"boss", "enc": &"boss", "ad": "BOSS"}],
 	# 2. bölge — Kemik Bataklığı
 	[{"type": &"savas", "enc": &"orta3", "ad": "Savaş"}, {"type": &"dukkan", "ad": "Dükkan"},
 		{"type": &"meydan", "ad": "Meydan"}],
 	[{"type": &"olay", "ad": "Olay"}, {"type": &"elit", "enc": &"elit2", "ad": "ELİT"},
 		{"type": &"mezar", "ad": "Gri Mezar"}],
-	[{"type": &"revir", "ad": "Sahra Revan"}, {"type": &"dukkan", "ad": "Dükkan"},
+	[{"type": &"revir", "ad": "Sahra Revan"}, {"type": &"kitapci", "ad": "Kitapçı"},
 		{"type": &"daragaci", "ad": "Darağacı"}],
 	[{"type": &"boss", "enc": &"boss2", "ad": "BOSS"}],
 ]

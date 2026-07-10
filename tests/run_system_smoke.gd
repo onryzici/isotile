@@ -14,5 +14,10 @@ func _init() -> void:
 	# düşman tarafı relic'ten etkilenmemeli
 	var e_dmg: int = CombatResolver._compute_attack(dummy, hero, [hero,dummy], {"relics":[rel]})
 	if e_dmg != CombatResolver._compute_attack(dummy, hero, [hero,dummy], {}): fails += 1; print("  [FAIL] relic düşmana da işledi")
-	print("=== RELIC HOOK %s ===" % ("GEÇTİ" if fails==0 else "HATA"))
+	# item = tek savaşlık relic (ItemData extends RelicData): resolver aynı kancayı okur
+	var it := ItemData.new(); it.tur = ItemData.Tur.SONRAKI_SAVAS
+	it.global_ek_guc = 2; it.global_kat = 1.5
+	var item_boost: int = CombatResolver._compute_attack(hero, dummy, [hero,dummy], {"relics":[it]})
+	if item_boost != boosted: fails += 1; print("  [FAIL] item relic kancasından işlemedi (%d != %d)" % [item_boost, boosted])
+	print("=== RELIC HOOK + ITEM %s ===" % ("GEÇTİ" if fails==0 else "HATA"))
 	quit(1 if fails else 0)
