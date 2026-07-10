@@ -10,6 +10,7 @@ signal open_garrison
 
 const BG := preload("res://assets/ui/menu_bg.png")
 const KUZU := preload("res://assets/ui/menu_kuzu.png")
+const TITLE := preload("res://assets/ui/menu_title.png")
 const HALTHER_TTF := "res://assets/fonts/Halther.otf"
 
 static var _halther: Font
@@ -33,6 +34,7 @@ var _root: Control
 var _kuzu: TextureRect
 
 func _ready() -> void:
+	AudioDirector.play_music()   # oyun müziği menüde de çalar (aynı parça kesintisiz sürer)
 	_ui = CanvasLayer.new()
 	add_child(_ui)
 	_build()
@@ -51,6 +53,21 @@ func _build() -> void:
 	bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(bg)
+
+	# ── Menü kolonu arkası: yumuşak sağa-koyulaşan gradyan (okunabilirlik) ──
+	var shade := TextureRect.new()
+	var grad := Gradient.new()
+	grad.colors = PackedColorArray([Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.45)])
+	grad.offsets = PackedFloat32Array([0.35, 0.95])
+	var gtex := GradientTexture2D.new()
+	gtex.gradient = grad
+	gtex.fill_from = Vector2(0.3, 0.5)
+	gtex.fill_to = Vector2(1.0, 0.5)
+	shade.texture = gtex
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	shade.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.add_child(shade)
 
 	# ── Kuzu şövalye: aynı 2560x1440 kadrajda (art solda konumlu) —
 	#    soldan kayarak gelir, hızlı başlar yavaş oturur (QUINT ease-out) ──
@@ -72,21 +89,21 @@ func _build() -> void:
 		.set_trans(Tween.TRANS_QUINT).set_ease(Tween.EASE_OUT)
 	ktw.tween_property(_kuzu, "modulate:a", 1.0, 0.35)
 
-	# ── Başlık: RISE / of the / LAMBS — üç katman (referans yerleşimi) ──
-	var t_rise := _title_label("RISE", 118, Vector2(92, 34))
-	var t_ofthe := _title_label("OF THE", 30, Vector2(212, 172))
-	var t_lambs := _title_label("LAMBS", 118, Vector2(58, 206))
-	# başlık girişi: hafif yukarıdan süzülme + sıralı fade
-	var ti := 0
-	for n: Control in [t_rise, t_ofthe, t_lambs]:
-		n.modulate.a = 0.0
-		var tp: Vector2 = n.position
-		n.position.y -= 16
-		var ttw := create_tween().set_parallel(true)
-		ttw.tween_property(n, "modulate:a", 1.0, 0.45).set_delay(0.25 + ti * 0.12)
-		ttw.tween_property(n, "position:y", tp.y, 0.5) \
-			.set_delay(0.25 + ti * 0.12).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-		ti += 1
+	# ── Başlık: Onur'un hazır görseli (rise-of.png, aynı 2560x1440 kadraj) ──
+	var title := TextureRect.new()
+	title.texture = TITLE
+	title.set_anchors_preset(Control.PRESET_FULL_RECT)
+	title.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	title.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.add_child(title)
+	title.modulate.a = 0.0
+	var tpos := title.position.y
+	title.position.y = tpos - 16
+	var ttw := create_tween().set_parallel(true)
+	ttw.tween_property(title, "modulate:a", 1.0, 0.5).set_delay(0.3)
+	ttw.tween_property(title, "position:y", tpos, 0.55) \
+		.set_delay(0.3).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
 	# ── Sağ menü: dikey, ortadan hafif yukarıda (referans yerleşimi) ──
 	var menu := VBoxContainer.new()
@@ -127,22 +144,6 @@ func _build() -> void:
 	_root.add_child(ver)
 
 
-## Başlık katmanı: Halther, beyaz, kalın koyu kontur + gölge
-func _title_label(text: String, size_px: int, pos: Vector2) -> Label:
-	var l := Label.new()
-	l.text = disp(text)
-	l.add_theme_font_override("font", halther())
-	l.add_theme_font_size_override("font_size", size_px)
-	l.add_theme_color_override("font_color", Color(0.94, 0.92, 0.88))
-	l.add_theme_color_override("font_outline_color", Color(0.04, 0.02, 0.02, 0.9))
-	l.add_theme_constant_override("outline_size", maxi(6, size_px / 10))
-	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
-	l.add_theme_constant_override("shadow_offset_y", 5)
-	l.add_theme_constant_override("shadow_offset_x", 3)
-	l.position = pos
-	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_root.add_child(l)
-	return l
 
 ## Menü kalemi (referans dili): Halther beyaz yazı + arkasında yarı saydam
 ## koyu şerit; hover'da yazı parlar, şerit hafif açılır, kalem sola süzülür.
@@ -150,38 +151,29 @@ func _menu_item(text: String, cb: Callable) -> Button:
 	var b := Button.new()
 	b.text = disp(text)
 	b.focus_mode = Control.FOCUS_NONE
-	b.custom_minimum_size = Vector2(340, 64)
-	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	b.custom_minimum_size = Vector2(340, 66)
+	b.mouse_default_cursor_shape = Control.CURSOR_ARROW   # imleç değişmesin (Onur)
 	b.add_theme_font_override("font", halther())
-	b.add_theme_font_size_override("font_size", 44)
+	b.add_theme_font_size_override("font_size", 48)
 	b.add_theme_color_override("font_color", Color(0.93, 0.90, 0.86))
 	b.add_theme_color_override("font_hover_color", Color(1.0, 0.98, 0.94))
 	b.add_theme_color_override("font_pressed_color", Color(0.85, 0.78, 0.7))
-	b.add_theme_color_override("font_outline_color", Color(0.05, 0.03, 0.03, 0.85))
-	b.add_theme_constant_override("outline_size", 8)
-	b.add_theme_stylebox_override("normal", _strip(Color(0, 0, 0, 0.34)))
-	b.add_theme_stylebox_override("hover", _strip(Color(0.05, 0.02, 0.02, 0.52)))
-	b.add_theme_stylebox_override("pressed", _strip(Color(0.02, 0.01, 0.01, 0.6)))
+	b.add_theme_color_override("font_outline_color", Color(0.05, 0.03, 0.03, 0.9))
+	b.add_theme_constant_override("outline_size", 10)
+	# şerit yok — başlıkla aynı dil: sadece yazı + kontur (referans hissi)
+	var empty := StyleBoxEmpty.new()
+	for st in ["normal", "hover", "pressed", "disabled", "focus"]:
+		b.add_theme_stylebox_override(st, empty)
+	b.pivot_offset = b.custom_minimum_size * 0.5
 	b.pressed.connect(cb)
 	b.mouse_entered.connect(func() -> void:
-		create_tween().tween_property(b, "position:x", -10.0, 0.12) \
+		create_tween().tween_property(b, "scale", Vector2(1.07, 1.07), 0.12) \
 			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT))
 	b.mouse_exited.connect(func() -> void:
-		create_tween().tween_property(b, "position:x", 0.0, 0.15) \
+		create_tween().tween_property(b, "scale", Vector2.ONE, 0.15) \
 			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT))
 	return b
 
-## Yazının arkasındaki yumuşak koyu şerit (referanstaki dikdörtgen bantlar)
-func _strip(bg: Color) -> StyleBoxFlat:
-	var box := StyleBoxFlat.new()
-	box.bg_color = bg
-	box.set_border_width_all(0)
-	box.set_corner_radius_all(2)
-	box.content_margin_left = 30
-	box.content_margin_right = 30
-	box.content_margin_top = 6
-	box.content_margin_bottom = 6
-	return box
 
 ## Kayıt varken "Yeni Sefer": mevcut seferi silme onayı
 func _confirm_new_run() -> void:

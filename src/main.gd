@@ -14,6 +14,8 @@ func _ready() -> void:
 	var cur := load("res://assets/ui/cursor.png")
 	if cur:
 		Input.set_custom_mouse_cursor(cur, Input.CURSOR_ARROW, Vector2(2, 1))
+		# butonlar hover'da sistem "el" imlecine geçmesin — özel ok her şekilde kalsın
+		Input.set_custom_mouse_cursor(cur, Input.CURSOR_POINTING_HAND, Vector2(2, 1))
 	_setup_grain()
 	EventBus.map_node_selected.connect(_on_map_node)
 	EventBus.return_to_map.connect(_on_return_to_map)
