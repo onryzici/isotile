@@ -152,6 +152,7 @@ Boss düğümlerinde (`boss`, `boss2`) **düşman bayrağının yerine** geçer.
 |---|---|---|---|
 | `boss` (Bölge 1) | 70 | 6 | 5 |
 | `boss2` (Bölge 2) | 95 | 6 | 5 |
+| `boss3` (Bölge 3) | 125 | 7 | 5 |
 
 Ayar yeri: CAN → `encounters.gd` `FLAG_HP`. SALDIRI/HIZ → `battle_screen.gd` `BOSS_ATK`/`BOSS_SPD`.
 
@@ -305,7 +306,7 @@ buralara vakit harcama — önce sistem gerekiyor.
 | **Çile 4-7** (gelistirme §12: MoP 7 Ordeal) | Kodda 3 seviye var (§6d); 4+ tanımsız |
 | **Ün (Reputation)** | Hiçbir yerde kazanılmıyor/harcanmıyor |
 | **Emir Kartları** | `data/orders/` yok. Tek iz: Kumandan yeteneği (`battle_screen._on_commander`) |
-| **3.–4. bölge** | Harita şablonu 2 bölge (`encounters.gd MAP_TEMPLATE`); spec 4 istiyor |
+| **4. bölge** | Kodda 3 bölge var (Pus Ormanı / Kemik Bataklığı / Kurt İni, 15 katman); spec 4 istiyor. Bölge 3 taş tile setini paylaşıyor (kendi bioma sanatı yok) |
 
 > Harita düğümleri (hepsi çalışır): `savas`/`elit`/`boss`/`dukkan`/`olay`/`saman`/`revir`/
 > `mezar`/`nitelik`/`yadigar`/`daragaci`/`meydan`/`kitapci`.
