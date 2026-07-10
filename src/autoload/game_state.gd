@@ -19,6 +19,13 @@ var relics: Array = []                    # RelicData listesi (run boyu global p
 var items: Array = []                     # ItemData listesi (tek kullanımlık, ≤ ITEM_CAP)
 var armed_items: Array = []               # kuşanılmış SONRAKI_SAVAS item'ları — tek savaşlık relic
 const ITEM_CAP := 3
+var ordeal := 0                           # Çile seviyesi (0 = normal sefer; gelistirme §12 Ordeal)
+const ORDEAL_MAX := 3
+var meta_ordeal_best := -1                # en yüksek TAMAMLANAN çile (−1 = ilk zafer henüz yok)
+
+## Seçilebilir en yüksek çile: tamamlananın bir üstü (ilk zafer çile 1'i açar)
+func ordeal_cap() -> int:
+	return clampi(meta_ordeal_best + 1, 0, ORDEAL_MAX)
 var commander_id: StringName = &"cesur"   # seçili kumandan (§B.0/4)
 
 ## Relic alanları toplamı (global_ek_guc, mevzi_bonus, altin_bonus...)
@@ -54,7 +61,7 @@ func save_meta() -> void:
 	if f:
 		f.store_string(JSON.stringify({"kalinti": meta_kalinti,
 			"gold_lv": meta_gold_lv, "flag_lv": meta_flag_lv, "mevzi_lv": meta_mevzi_lv,
-			"degirmen_lv": meta_degirmen_lv}))
+			"degirmen_lv": meta_degirmen_lv, "ordeal_best": meta_ordeal_best}))
 
 func load_meta() -> void:
 	if not FileAccess.file_exists(META_PATH):
@@ -70,10 +77,14 @@ func load_meta() -> void:
 	meta_flag_lv = int(d.get("flag_lv", 0))
 	meta_mevzi_lv = int(d.get("mevzi_lv", 0))
 	meta_degirmen_lv = int(d.get("degirmen_lv", 0))
+	meta_ordeal_best = int(d.get("ordeal_best", -1))
 
 ## Sefer sonu meta kaynak ver (geçilen katmana göre) + kalıcı kaydet
 func award_meta(layers_cleared: int, won: bool) -> int:
 	var earned := layers_cleared * 2 + (10 if won else 0)
+	earned = int(earned * (1.0 + 0.5 * ordeal))   # Çile ödül çarpanı (§12)
+	if won:
+		meta_ordeal_best = maxi(meta_ordeal_best, ordeal)   # bir üst çile açılır
 	meta_kalinti += earned
 	save_meta()
 	return earned
@@ -91,6 +102,7 @@ func start_new_run(seed_value: int = 0) -> void:
 	relics = []
 	items = []
 	armed_items = []
+	ordeal = 0        # hub Sefere Çık sonrası seçilen seviyeyi yazar
 	squad = []
 	for p: PieceData in Database.get_all("pieces"):
 		if p.starter:
@@ -236,7 +248,7 @@ func save_run() -> void:
 	var data := {
 		"gold": gold, "layer_index": layer_index, "player_flag_hp": player_flag_hp,
 		"run_seed": run_seed, "commander_id": String(commander_id), "run_over": run_over,
-		"zar": zar,
+		"zar": zar, "ordeal": ordeal,
 		"squad_ids": squad.map(func(p: PieceData) -> String: return String(p.id)),
 		"relic_ids": relics.map(func(r: RelicData) -> String: return String(r.id)),
 		"item_ids": items.map(func(it: ItemData) -> String: return String(it.id)),
@@ -274,6 +286,7 @@ func load_run() -> bool:
 	commander_id = StringName(data.get("commander_id", "cesur"))
 	run_over = data.get("run_over", false)
 	zar = int(data.get("zar", 4))
+	ordeal = int(data.get("ordeal", 0))
 	items = []
 	for iid in data.get("item_ids", []):
 		var it := Database.get_resource("items", StringName(iid))

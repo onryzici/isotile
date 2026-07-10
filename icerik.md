@@ -274,6 +274,23 @@ Harita HUD'unda sol altta şerit — tıkla:
 
 ---
 
+## 6d. ÇİLE (Ordeal) — 3 seviye, çalışıyor
+
+**Kod:** `GameState.ordeal` (run) + `meta_ordeal_best` (kalıcı, `garrison.json`) ·
+Seçim: Ağıl Meydanı alt şeridi "Çile: N ↻" (ilk zaferden sonra görünür; tamamlananın
+bir üstü açılır, `ordeal_cap`). Kademeli üst üste biner (`battle_screen`):
+
+| Seviye | Etki | Uygulama |
+|---|---|---|
+| 1 | Düşman birimleri **+1 SALDIRI, +2 CAN** (bayrak hariç; plakada görünür) | `_ordealize` |
+| 2 | + düşman sancak/boss CAN **×1.3** | `_setup_flags` |
+| 3 | + her savaşta **1 ekstra düşman** (kurulumun ilk tipi, satır 4'e) | `_load_encounter` |
+
+**Ödül:** sefer sonu Kalıntı `×(1 + 0.5×çile)` (`award_meta`). Zaferde `meta_ordeal_best`
+güncellenir → bir üst çile açılır. Kayıtta run `ordeal`, meta `ordeal_best`.
+
+---
+
 ## 7. TASARIMDA VAR, KODDA YOK
 
 `CLAUDE.md` bunları detaylıca tarif ediyor ama **hiç yazılmadılar.** İçerik ayarlarken
@@ -284,7 +301,8 @@ buralara vakit harcama — önce sistem gerekiyor.
 | **Lonca / Arşiv / Onur Salonu / Contract** (gelistirme §2) | Ağıl Meydanı'nda kilitli elmas plakalar var; arkasında sistem yok |
 | **Kaynak parası + tesis çeşitliliği** (gelistirme §12) | Garnizon diyoraması 4 tesisli; spec 6-8 tesis + ayrı "Kaynak" parası istiyor (kodda tek meta para: **Kalıntı**) |
 | **Tutorial** (gelistirme §3) | Yok — tek iz "Nasıl Oynanır" modalı |
-| **Contract / Ordeal** (gelistirme §2/§12) | Yok |
+| **Contract / Sözleşme** (gelistirme §2) | Yok |
+| **Çile 4-7** (gelistirme §12: MoP 7 Ordeal) | Kodda 3 seviye var (§6d); 4+ tanımsız |
 | **Ün (Reputation)** | Hiçbir yerde kazanılmıyor/harcanmıyor |
 | **Emir Kartları** | `data/orders/` yok. Tek iz: Kumandan yeteneği (`battle_screen._on_commander`) |
 | **3.–4. bölge** | Harita şablonu 2 bölge (`encounters.gd MAP_TEMPLATE`); spec 4 istiyor |

@@ -160,8 +160,9 @@ func _show_menu() -> void:
 ## Ağıl Meydanı (gelistirme §2): sefer öncesi hub — run BURADA başlar (Sefere Çık)
 func _show_hub() -> void:
 	var h := HubScreen.new()
-	h.depart.connect(func() -> void:
+	h.depart.connect(func(ordeal_lv: int) -> void:
 		GameState.start_new_run()
+		GameState.ordeal = ordeal_lv   # start_new_run sıfırlar; seçim sonra yazılır
 		_show_map())
 	h.open_garrison.connect(func() -> void:
 		var g := GarrisonScreen.new()

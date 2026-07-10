@@ -103,3 +103,7 @@
   savaşlık relic etkisi). Harita HUD'unda çanta şeridi; Kitapçı diyoraması
   (3 seed'li kaide, altınla al, Stok Çevir 1 zar). Bölge başına 1 kitapçı düğümü.
   Debug: `--kitapci`.
+- Çile (Ordeal, gelistirme §12): 3 kademeli zorluk — düşman +1/+2 stat, sancak/boss
+  CAN ×1.3, +1 ekstra düşman. İlk zaferle açılır; Meydan'da "Çile: N" seçici;
+  Kalıntı ödülü ×(1+0.5×çile); zafer bir üst çileyi açar. Kayıt: run `ordeal`,
+  meta `ordeal_best`. Harita HUD'unda çile göstergesi.

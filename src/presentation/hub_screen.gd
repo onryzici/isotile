@@ -5,7 +5,7 @@ extends NodeDiorama
 ## tesisler), sağda kilitli Lonca/Arşiv plakaları (roadmap). Sürünün kuzuları
 ## ateşin başında bekler. Menü butonlarının yerini alan diyorama.
 
-signal depart
+signal depart(ordeal_lv: int)
 signal open_garrison
 signal back
 
@@ -15,9 +15,20 @@ const IC_BOOK := preload("res://assets/icons/book.svg")
 const IC_TRAIT := preload("res://assets/icons/trait.svg")
 
 var _left := false
+var _ordeal := 0
+var _ordeal_btn: Button
+
+## Çile etkileri (gelistirme §12 Ordeal — kademeli üst üste biner)
+const ORDEAL_DESC := [
+	"normal sefer",
+	"düşmanlar +1 SALDIRI, +2 CAN",
+	"+ düşman sancak/boss CAN ×1.3",
+	"+ her savaşta 1 ekstra düşman",
+]
 
 func _ready() -> void:
 	force_home_biome = true
+	GameState.load_meta()   # hub run dışı açılabilir; çile kilidi metadan okunur
 	super()
 	var cells := {}
 	for y in 5:
@@ -61,12 +72,27 @@ func _ready() -> void:
 
 	set_description("AĞIL MEYDANI",
 		"Son ağılın meydanı. Ateşin başında sürünü topla; hazır olunca pusa çık.")
-	set_footer("Kalıntı: %d  ·  soluk elmaslar henüz kilitli" % GameState.meta_kalinti)
+	_refresh_footer()
+	# Çile seçici (§12 Ordeal): ilk zaferden sonra açılır, tıkla → seviye döner
+	if GameState.ordeal_cap() > 0:
+		_ordeal_btn = add_footer_button("", func() -> void:
+			_ordeal = (_ordeal + 1) % (GameState.ordeal_cap() + 1)
+			_refresh_footer())
 	add_footer_button("← Menü", func() -> void:
 		if not _left:
 			_left = true
 			back.emit()
 			queue_free())
+
+func _refresh_footer() -> void:
+	var txt := "Kalıntı: %d  ·  soluk elmaslar henüz kilitli" % GameState.meta_kalinti
+	if _ordeal > 0:
+		txt += "\nÇile %d: %s  ·  Kalıntı ödülü ×%.1f" % [_ordeal,
+			"; ".join(ORDEAL_DESC.slice(1, _ordeal + 1)), 1.0 + 0.5 * _ordeal]
+	set_footer(txt)
+	if _ordeal_btn:
+		_ordeal_btn.text = "Çile: %d ↻" % _ordeal
+		_ordeal_btn.tooltip_text = ORDEAL_DESC[_ordeal]
 
 func _on_depart() -> void:
 	if _left:
@@ -74,7 +100,7 @@ func _on_depart() -> void:
 	_left = true
 	AudioDirector.play_sfx(&"battle_start")
 	clear_choices()
-	depart.emit()
+	depart.emit(_ordeal)
 	queue_free()
 
 func _on_garrison() -> void:

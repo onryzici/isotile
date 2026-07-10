@@ -113,6 +113,23 @@ func _load_encounter() -> void:
 	_terrain_setup = enc["terrain"].duplicate()
 	_heights = enc["heights"].duplicate()
 	_enc_gold = enc.get("gold", 0)
+	# Çile 3+ (§12 Ordeal): her savaşa +1 ekstra düşman (kurulumun ilk tipi)
+	if GameState.ordeal >= 3 and not _enemy_setup.is_empty():
+		var extra_id: StringName = _enemy_setup.values()[0]
+		for c in [3, 2, 4, 1, 5, 0]:
+			var coord := Vector2i(c, BoardDefs.ROWS - 2)
+			if not _enemy_setup.has(coord) and _terrain_setup.get(coord, &"") != &"duvar":
+				_enemy_setup[coord] = extra_id
+				break
+
+## Çile (§12): 1+ → düşman birimleri güçlenmiş (+1 SALDIRI, +2 CAN). Bayrağa işlemez.
+## Hem telegraph önizlemesi hem gerçek savaş bu yoldan geçer → önizleme sadık kalır.
+func _ordealize(u: CombatUnit) -> CombatUnit:
+	if GameState.ordeal >= 1 and u.side == CombatResolver.SIDE_ENEMY and not u.is_flag:
+		u.atk += 1
+		u.hp += 2
+		u.max_hp += 2
+	return u
 
 ## Ambient toz zerreleri — yavaş süzülen altın motes (atmosfer, referans hissi)
 func _setup_ambient() -> void:
@@ -299,7 +316,10 @@ func _setup_enemies() -> void:
 			continue
 		var view := PieceView.new()
 		add_child(view)
-		view.setup(&"ENEMY", data.stat_text(), 1.0 + 0.18 * (data.tier - 1), _sprite_path(data))
+		# Çile buff'u plakada da görünsün (telegraph dürüstlüğü)
+		var stat := data.stat_text() if GameState.ordeal < 1 else \
+			"%d/%d/%d" % [data.saldiri + 1, data.can + 2, data.hiz]
+		view.setup(&"ENEMY", stat, 1.0 + 0.18 * (data.tier - 1), _sprite_path(data))
 		var base := board.coord_to_world(coord)
 		view.position = Vector3(base.x, board.tile_top_y(coord), base.z)
 		_enemy_views[coord] = view
@@ -309,6 +329,8 @@ func _setup_enemies() -> void:
 ## Zafer = düşman bayrağını yık. Oyuncu bayrağı CAN'ı kalıcı (GameState).
 func _setup_flags() -> void:
 	_enemy_flag_hp = Encounters.flag_hp(GameState.current_encounter)
+	if GameState.ordeal >= 2:   # Çile 2+ (§12): düşman sancak/boss CAN'ı ×1.3
+		_enemy_flag_hp = int(ceil(_enemy_flag_hp * 1.3))
 	_player_flag_coord = _free_tile_in_row(0, {})
 	var avoid := {}
 	for c: Vector2i in _enemy_setup:
@@ -687,9 +709,9 @@ func _build_units() -> Dictionary:
 		return a.y < b.y if a.y != b.y else a.x < b.x)
 	for coord: Vector2i in enemy_coords:
 		uid += 1
-		units.append(CombatUnit.from_piece(
+		units.append(_ordealize(CombatUnit.from_piece(
 			Database.get_resource("enemies", _enemy_setup[coord]),
-			CombatResolver.SIDE_ENEMY, coord, uid))
+			CombatResolver.SIDE_ENEMY, coord, uid)))
 		views[uid] = _enemy_views[coord]
 		enemy_uids[uid] = _enemy_views[coord]
 	# Bayraklar (§B.0/1): hareketsiz hedefler. Oyuncu bayrağı player_coords'a
@@ -742,9 +764,9 @@ func _start_battle() -> void:
 		return a.y < b.y if a.y != b.y else a.x < b.x)
 	for coord: Vector2i in enemy_coords:
 		_uid_next += 1
-		_units.append(CombatUnit.from_piece(
+		_units.append(_ordealize(CombatUnit.from_piece(
 			Database.get_resource("enemies", _enemy_setup[coord]),
-			CombatResolver.SIDE_ENEMY, coord, _uid_next))
+			CombatResolver.SIDE_ENEMY, coord, _uid_next)))
 		_view_by_uid[_uid_next] = _enemy_views[coord]
 	_uid_next += 1
 	_battle_player_flag = CombatUnit.make_flag(CombatResolver.SIDE_PLAYER,

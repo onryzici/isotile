@@ -368,6 +368,8 @@ func _build_hud() -> void:
 	left.add_theme_color_override("font_color", Color(0.82, 0.76, 0.6))
 	left.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE, Control.PRESET_MODE_MINSIZE)
 	left.offset_left = 20
+	if GameState.ordeal > 0:
+		left.text += "      Çile %d" % GameState.ordeal
 	left.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	left.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bar.add_child(left)
