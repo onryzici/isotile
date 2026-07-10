@@ -18,6 +18,7 @@ const SPRITE_DEPTH_PUSH := 0.45
 const TOON := preload("res://shaders/toon.gdshader")
 const OUTLINE := preload("res://shaders/outline.gdshader")
 const OVERLAY := preload("res://shaders/grid_overlay.gdshader")
+const ISO_TILE := preload("res://shaders/iso_tile.gdshader")
 
 ## TEST: tüm zemin test-tile.png sprite'ından, efektsiz (shader/tint/outline yok)
 const USE_TEST_TILE := true
@@ -25,6 +26,10 @@ const USE_TEST_TILE := true
 ## Tahtaya per-kare hash ile ~%70 A / %30 B karıştırılır (bkz. _tile_tex_for).
 const TILE_A_TEX := preload("res://assets/tiles/iso_tile_a.png")   # koyu üst yüz
 const TILE_B_TEX := preload("res://assets/tiles/iso_tile_b.png")   # açık/gri üst yüz
+## Pus Ormanı (1. bölge) bioma seti (Onur art'ı, aynı geometri/ön-esnetme):
+## yeşil-yosun üst yüzler; A = toprak yan, B = koyu yeşil yan.
+const YESIL_A_TEX := preload("res://assets/tiles/yesil_a.png")
+const YESIL_B_TEX := preload("res://assets/tiles/yesil_b.png")
 ## İnce ön-kaide (ledge) tile'ı — aynı stil, alçak blok (1024×768).
 const INCE_TILE_TEX := preload("res://assets/tiles/ince_tile.png")
 ## Üst yüz elmasının merkezi (px, görselin üstünden). Ham tile'lar -35° kamera için
@@ -143,7 +148,7 @@ func _build_ledge_tile(coord: Vector2i) -> void:
 	var base := coord_to_world(coord)
 	var vis: Node3D
 	if USE_TEST_TILE:
-		var spr := _make_billboard_tile(INCE_TILE_TEX, TILE_TOP_CENTER_PX)
+		var spr := _make_billboard_tile(INCE_TILE_TEX, TILE_TOP_CENTER_PX, LEDGE_H)
 		spr.position = Vector3(base.x, LEDGE_H, base.z)
 		spr.set_meta("base_pos", spr.position)
 		spr.position += _view_push()
@@ -189,7 +194,7 @@ func _build_tile(coord: Vector2i) -> void:
 	var base := coord_to_world(coord)
 	var vis: Node3D
 	if USE_TEST_TILE:
-		vis = _make_sprite_tile(coord)
+		vis = _make_sprite_tile(coord, block_h)
 		vis.position = Vector3(base.x, block_h, base.z)
 		vis.set_meta("base_pos", vis.position)
 		vis.position += _view_push()
@@ -249,19 +254,24 @@ func _build_tile(coord: Vector2i) -> void:
 ## Alpha-scissor StandardMaterial3D = opak geçit → saf depth-buffer düzeni.
 ## - genişlik: elmaslar TAM kenetlenir (gap yok — aralık yan yüz sızdırır)
 ## - dikey: art 35°'ye önceden esnetilmiş, runtime ölçek yok
-func _make_sprite_tile(coord: Vector2i) -> MeshInstance3D:
-	return _make_billboard_tile(_tile_tex_for(coord), TILE_TOP_CENTER_PX)
+func _make_sprite_tile(coord: Vector2i, block_h: float) -> MeshInstance3D:
+	return _make_billboard_tile(_tile_tex_for(coord), TILE_TOP_CENTER_PX, block_h)
 
 ## Per-kare A/B seçimi: sabit hash ile rastgele GÖRÜNEN ama kararlı desen.
 ## ~%30 B (açık), gerisi A (koyu) — "çoğunluk A" (Onur tercihi). Salt görsel,
-## combat determinizmini etkilemez.
+## combat determinizmini etkilemez. Bioma: 1. bölge (Pus Ormanı) yeşil set,
+## 2. bölge (Kemik Bataklığı) taş set (bölge = GameState.layer_index).
 func _tile_tex_for(coord: Vector2i) -> Texture2D:
 	var hash_v := absi((coord.x * 73856093) ^ (coord.y * 19349663) ^ 0x5f3759df)
+	if GameState.layer_index < 6:
+		return YESIL_B_TEX if (hash_v % 100) < 30 else YESIL_A_TEX
 	return TILE_B_TEX if (hash_v % 100) < 30 else TILE_A_TEX
 
 ## top_center_px: üst yüz elması merkezinin görselin ÜSTÜNDEN piksel uzaklığı
-## (ana tile 1024×1175 → 294; ledge 768×661 → 220). Genişlik dünyada aynı (√2·TILE).
-func _make_billboard_tile(tex: Texture2D, top_center_px: float) -> MeshInstance3D:
+## (tüm tile'larda 294 — elmas genişliği 1024 px, ölçülü). Genişlik dünyada √2·TILE.
+## block_h: tile'ın temsil ettiği kübik bloğun yüksekliği → shader gerçek derinlik yazar
+## (bkz. iso_tile.gdshader; düz billboard derinliği diken/lav/bayrakla çakışıyordu).
+func _make_billboard_tile(tex: Texture2D, top_center_px: float, block_h: float) -> MeshInstance3D:
 	var px := sqrt(2.0) * TILE_SIZE / float(tex.get_width())
 	var quad := QuadMesh.new()
 	quad.size = Vector2(tex.get_width() * px, tex.get_height() * px)
@@ -270,15 +280,17 @@ func _make_billboard_tile(tex: Texture2D, top_center_px: float) -> MeshInstance3
 		-(tex.get_height() * 0.5 - top_center_px) * px, 0.0)
 	var mi := MeshInstance3D.new()
 	mi.mesh = quad
-	var mat := StandardMaterial3D.new()
-	mat.albedo_texture = tex
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
-	mat.alpha_scissor_threshold = 0.5
-	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	mat.billboard_keep_scale = true
+	var mat := ShaderMaterial.new()
+	mat.shader = ISO_TILE
+	mat.set_shader_parameter("tex", tex)
+	mat.set_shader_parameter("block_h", block_h)
+	mat.set_shader_parameter("half_xz", TILE_SIZE * 0.5)
+	mat.set_shader_parameter("write_depth",
+		not OS.get_cmdline_user_args().has("--flat-depth"))
 	mi.material_override = mat
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# Billboard quad'ın AABB'si dönünce büyüdüğünden görünürlük kırpması yanlış olabilir
+	mi.extra_cull_margin = 4.0
 	return mi
 
 ## Koordinat -> dünya konumu (tile merkezinin zemin izdüşümü).

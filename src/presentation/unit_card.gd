@@ -123,11 +123,13 @@ func _figure(piece: PieceData, cls_col: Color) -> Control:
 		tr.set_anchors_preset(Control.PRESET_FULL_RECT)
 		box.add_child(tr)
 	else:
+		# Kutuyu doldurur, kapsülü kendi içinde ortalar. PRESET_CENTER kullanılmaz:
+		# offsetler box.size henüz (0,0) iken hesaplanıp kapsül kutudan taşıyordu
+		# (stat satırının üstüne biniyordu).
 		var cap := _CapsuleGlyph.new()
 		cap.tint = cls_col
 		cap.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		cap.custom_minimum_size = Vector2(40, 60)
-		cap.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
+		cap.set_anchors_preset(Control.PRESET_FULL_RECT)
 		box.add_child(cap)
 	return box
 
@@ -135,7 +137,8 @@ func _figure(piece: PieceData, cls_col: Color) -> Control:
 func _stat_row(piece: PieceData) -> Control:
 	var h := HBoxContainer.new()
 	h.alignment = BoxContainer.ALIGNMENT_CENTER
-	h.add_theme_constant_override("separation", 6)
+	# Üç stat TEK bir küme gibi okunsun: plakalar bitişik, aralarında ince nefes payı.
+	h.add_theme_constant_override("separation", 2)
 	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	h.add_child(_stat_plate(IC_ATK, piece.saldiri, ATK_COL))
 	h.add_child(_stat_plate(IC_HP, piece.can, HP_COL))
@@ -162,8 +165,8 @@ func _stat_plate(icon: Texture2D, val: int, col: Color) -> Control:
 	var box := StyleBoxFlat.new()
 	box.bg_color = Color(0.06, 0.055, 0.08, 0.95)
 	box.set_corner_radius_all(3)
-	box.content_margin_left = 8
-	box.content_margin_right = 8
+	box.content_margin_left = 5
+	box.content_margin_right = 5
 	box.content_margin_top = 0
 	box.content_margin_bottom = 1
 	plate.add_theme_stylebox_override("panel", box)
@@ -244,15 +247,14 @@ class _Diamond extends Control:
 			Vector2(w * 0.5, 0), Vector2(w, hh * 0.5), Vector2(w * 0.5, hh),
 			Vector2(0, hh * 0.5), Vector2(w * 0.5, 0)]), Color(0, 0, 0, 0.5), 1.0)
 
-## Sprite'sız birimler için kapsül silüeti
+## Sprite'sız birimler için kapsül silüeti — kendi rect'inin ortasına, sabit boyda çizer
 class _CapsuleGlyph extends Control:
+	const GLYPH := Vector2(38, 58)
 	var tint := Color.GRAY
 	func _draw() -> void:
-		var w := size.x
-		var h := size.y
-		var cx := w * 0.5
-		var r := w * 0.4
+		var o := (size - GLYPH) * 0.5
+		var r := GLYPH.x * 0.5
 		var col := tint.lightened(0.08)
-		draw_circle(Vector2(cx, r), r, col)
-		draw_circle(Vector2(cx, h - r), r, col)
-		draw_rect(Rect2(cx - r, r, r * 2.0, h - r * 2.0), col)
+		draw_circle(o + Vector2(r, r), r, col)
+		draw_circle(o + Vector2(r, GLYPH.y - r), r, col)
+		draw_rect(Rect2(o.x, o.y + r, GLYPH.x, GLYPH.y - r * 2.0), col)

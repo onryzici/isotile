@@ -129,6 +129,14 @@ func _play_event(e: Dictionary) -> void:
 				_update_label(e["unit_id"])
 				_spawn_number(view.position, "-%d" % e["damage"], COLOR_PUS)
 			await _delay(0.1)
+		"SPEED_DICE":
+			# HIZ eşitliği zarı (gelistirme §6): birimin üstünde kısa zar sonucu.
+			# Akışı kesmez — minik gecikme, sayı kendiliğinden süzülüp söner.
+			var dview: PieceView = _views.get(e["unit_id"])
+			if dview:
+				# "Zar N" düz metin: zar glifleri (⚀-⚅) gövde fontunda yok (tofu riski)
+				_spawn_number(dview.position, "Zar %d" % e["roll"], Color(0.88, 0.92, 1.0))
+			await _delay(0.12)
 		"STATUS":
 			_set_status(e["target"], e["status"], e["stacks"])
 			var stv: PieceView = _views.get(e["target"])
@@ -197,9 +205,17 @@ func _play_attack(e: Dictionary) -> void:
 	var kat: float = e.get("kat", 1.0)
 	var heat := clampf((kat - 1.0) * 0.5 + float(final) / 22.0, 0.0, 1.0)
 	var payoff: bool = kat >= 1.35 or final >= CRIT_THRESH
+	var src_piece := String(_info.get(e["src"], {}).get("piece_id", ""))
 	# Rahip → şimşek: gökten iner, hedef çarpılır (normal impact yerine)
-	var is_bolt := String(_info.get(e["src"], {}).get("piece_id", "")) == "rahip"
-	if is_bolt:
+	var is_bolt := src_piece == "rahip"
+	if src_piece == "__boss":
+		# BOSS ejderha → alev nefesi. Kaynak, gövde merkezi DEĞİL, sprite'ın AĞZI.
+		_fire_breath(_board.to_local(src.boss_mouth_position()), dst.position)
+		dst.squash(0.2, 0.36 / speed)
+		_spawn_number(dst.position, "-%d" % final, Color(1.0, 0.66, 0.3), true)
+		if camera_rig:
+			camera_rig.shake(0.22, 0.28)
+	elif is_bolt:
 		_lightning(dst.position)
 		dst.zap_flash(0.45 / speed)
 		_spawn_number(dst.position, "-%d" % final, Color(0.7, 0.88, 1.0), payoff)
@@ -260,6 +276,11 @@ func _set_status(uid: int, status: String, stacks: int) -> void:
 		parts.append("%s %d" % [STATUS_SHORT.get(s, s), dict[s]])
 	view.set_status_text("  ".join(parts))
 
+## Aynı anda doğan sayılar üst üste binip "hayalet/çift baskı" gibi görünüyordu.
+## Her yeni sayı bir öncekinden yanal olarak kaydırılır (döngüsel yuva).
+var _num_slot := 0
+const NUM_SLOTS := [-0.28, 0.24, -0.12, 0.34]
+
 ## Damage number (§16.6): billboard Label3D, scale-pop + yukarı süzül + sön.
 ## big = kritik (daha büyük + daha yüksek pop).
 func _spawn_number(world_pos: Vector3, text: String, color: Color, big: bool = false) -> void:
@@ -267,28 +288,38 @@ func _spawn_number(world_pos: Vector3, text: String, color: Color, big: bool = f
 	lbl.text = text
 	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	lbl.no_depth_test = true
-	lbl.pixel_size = 0.011 if big else 0.008
+	# Yüksek font + küçük pixel_size = keskin metin. Outline ince: 18px halka sayıyı
+	# şişirip bulanıklaştırıyordu; okunurluk için ince ve tam siyah yeter.
+	lbl.pixel_size = 0.0055 if big else 0.0042
 	lbl.font = UITheme.body_font()
-	lbl.font_size = 64
-	lbl.outline_size = 18
+	lbl.font_size = 128
+	lbl.outline_size = 14
+	lbl.outline_modulate = Color(0, 0, 0, 0.9)
 	lbl.modulate = color
 	_board.add_child(lbl)
-	lbl.position = world_pos + Vector3(0, 1.5, 0)
+	var slot: float = NUM_SLOTS[_num_slot % NUM_SLOTS.size()]
+	_num_slot += 1
+	lbl.position = world_pos + Vector3(slot, 1.45, 0)
 	lbl.scale = Vector3.ONE * 0.2
 	var peak := 1.75 if big else 1.3
 	var pop := lbl.create_tween()
 	pop.tween_property(lbl, "scale", Vector3.ONE * peak, 0.1 / speed).set_trans(Tween.TRANS_BACK)
 	pop.tween_property(lbl, "scale", Vector3.ONE * (1.25 if big else 1.0), 0.08 / speed)
+	# Yay çizerek yukarı-yana süzül (dümdüz yukarı çıkmak yığılma hissi veriyordu)
 	var drift := lbl.create_tween()
-	drift.tween_property(lbl, "position:y", lbl.position.y + 0.9, 0.75 / speed)
-	drift.parallel().tween_property(lbl, "modulate:a", 0.0, 0.45 / speed).set_delay(0.3 / speed)
+	drift.tween_property(lbl, "position:y", lbl.position.y + 0.85, 0.6 / speed) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	drift.parallel().tween_property(lbl, "position:x", lbl.position.x + slot * 0.35, 0.6 / speed)
+	drift.parallel().tween_property(lbl, "modulate:a", 0.0, 0.3 / speed).set_delay(0.3 / speed)
 	drift.tween_callback(lbl.queue_free)
 
 ## Darbe VFX'i: yıldız FLASH + yumuşak yuvarlak KIVILCIM + (ağırsa) şok dalgası HALKASI.
 ## intensity 1.0 normal, >1.6 ağır. Kare additive partikül YOK → dokular yuvarlak/yıldız.
 func _impact(world_pos: Vector3, color: Color, intensity: float) -> void:
 	var at := world_pos + Vector3(0, 0.55, 0)
-	_flash(at, color, 0.6 + intensity * 0.5)
+	# Flash KÜÇÜK kalmalı: eskiden 0.6+1.9×0.5 ≈ 1.55 dünya birimiydi ve additive+glow
+	# ile hedefi tamamen yutan turuncu bir yumru oluyordu. Darbe "noktası" olsun.
+	_flash(at, color, 0.42 + intensity * 0.3)
 	_sparks(at, color, intensity)
 	if intensity >= 1.6:
 		_ring(at, color.lerp(Color(1, 1, 1), 0.35), 0.6 + intensity * 0.55)
@@ -323,41 +354,54 @@ func _ring(pos: Vector3, color: Color, size: float) -> void:
 	fade.tween_property(mat, "albedo_color:a", 0.0, 0.34 / speed)
 	fade.tween_callback(mi.queue_free)
 
-## Yumuşak yuvarlak kıvılcımlar (FX_SPARK) — az, hızlı dışa, yerçekimli.
+## Kıvılcım: KISA, HIZLI, ÇİZGİ. Eskiden yumuşak yuvarlak blob'lardı — additive +
+## glow + 0.5 sn ömür yüzünden havada asılı kalan sarı balonlar gibi görünüyordu
+## (Onur: "vuruş efektleri güzel değil"). Artık hız yönünde uzayan (BILLBOARD_PARTICLES)
+## ince şeritler; ağır yerçekimiyle hızla düşüp sönüyorlar.
 func _sparks(pos: Vector3, color: Color, intensity: float) -> void:
 	var p := GPUParticles3D.new()
-	p.amount = int(8 + 6 * intensity)
-	p.lifetime = 0.5
+	p.amount = int(5 + 4 * intensity)
+	p.lifetime = 0.3
 	p.one_shot = true
 	p.explosiveness = 1.0
 	p.position = pos
 	var mat := ParticleProcessMaterial.new()
 	mat.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
-	mat.emission_sphere_radius = 0.1
+	mat.emission_sphere_radius = 0.06
 	mat.direction = Vector3(0, 1, 0)
 	mat.spread = 180.0
-	mat.initial_velocity_min = 1.5 * intensity
-	mat.initial_velocity_max = 3.6 * intensity
-	mat.gravity = Vector3(0, -5.5, 0)
-	mat.damping_min = 1.5
-	mat.damping_max = 3.0
-	mat.scale_min = 0.12 * (0.8 + intensity)
-	mat.scale_max = 0.26 * (0.8 + intensity)
-	var curve := Curve.new()
+	mat.initial_velocity_min = 3.2 * intensity
+	mat.initial_velocity_max = 7.0 * intensity
+	mat.gravity = Vector3(0, -11.0, 0)     # ağır: yay çizip anında düşsün
+	mat.damping_min = 0.5
+	mat.damping_max = 1.5
+	mat.scale_min = 0.55
+	mat.scale_max = 1.0
+	var curve := Curve.new()               # uçta incelerek kaybol
 	curve.add_point(Vector2(0, 1))
 	curve.add_point(Vector2(1, 0))
 	var ct := CurveTexture.new()
 	ct.curve = curve
 	mat.scale_curve = ct
+	# Sıcak beyaz çekirdek → renk → şeffaf: "yanan metal" hissi
+	var grad := Gradient.new()
+	grad.set_color(0, Color(1.0, 0.98, 0.9, 1.0))
+	grad.set_color(1, Color(color.r, color.g, color.b, 0.0))
+	var gt := GradientTexture1D.new()
+	gt.gradient = grad
+	mat.color_ramp = gt
 	p.process_material = mat
 	var quad := QuadMesh.new()
-	quad.size = Vector2(0.3, 0.3)
-	quad.material = _fx_material(FX_SPARK, color)
+	quad.size = Vector2(0.035, 0.16)       # ince uzun şerit
+	var sm := _fx_material(FX_SPARK, color)
+	sm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES   # +Y = hız yönü
+	sm.vertex_color_use_as_albedo = true                     # color_ramp uygulansın
+	quad.material = sm
 	p.draw_pass_1 = quad
 	_board.add_child(p)
 	p.emitting = true
 	var t := p.create_tween()
-	t.tween_interval(0.9)
+	t.tween_interval(0.55)
 	t.tween_callback(p.queue_free)
 
 ## Toz/duman: birim hareket/saldırırken ayak dibinden yayılan hafif toprak tozu
@@ -420,7 +464,8 @@ func _fx_material(tex: Texture2D, color: Color) -> StandardMaterial3D:
 	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 	m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 	m.albedo_texture = tex
-	m.albedo_color = Color(color.r * 1.3, color.g * 1.3, color.b * 1.3, 1.0)  # rgb boost, a=1
+	# rgb boost 1.3 idi; additive + WorldEnvironment glow ile birlikte beyaza patlıyordu
+	m.albedo_color = Color(color.r * 1.05, color.g * 1.05, color.b * 1.05, 1.0)
 	m.no_depth_test = true
 	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
 	return m
@@ -487,36 +532,187 @@ func _flame_quad(base_pos: Vector3, poison: bool, s: float, seed: float) -> void
 	tout.parallel().tween_property(mi, "scale", Vector3(s, s * 0.5, s), 0.35 / speed)
 	tout.tween_callback(mi.queue_free)
 
-## Şimşek (Rahip): gökten hedefe iner, birkaç kez çakar, hedefte flaş + elektrik sesi.
-## Billboard dikey; additive + glow → gerçek yıldırım hissi.
+## Şimşek (Rahip). Eskiden tek düz quad'dı: sabit boyda beliriyor, alfası titreyip
+## kayboluyordu — "çakma" hissi yoktu. Şimdi:
+##  · üç katman (geniş mavi hale + gövde + ince sıcak çekirdek) → hacim ve sıcaklık
+##  · pivot TEPEDE: gövde yukarıdan aşağı doğru büyüyerek İNER (gerçek çakış)
+##  · katmanlar faz kaydırmalı titrer → tek parça yanıp sönmez, elektrik gibi kaynar
+##  · yerde çarpma halkası + yukarı fırlayan kıvılcım + kısa mavi ışık patlaması
+const BOLT_H := 2.4
+const BOLT_ASPECT := 0.25   # lightning.png 128×512
+## Şimşeğin BİTTİĞİ yükseklik: birimin göğüs hizası. Ayak dibine (y≈0) indirilince
+## gövde birimin altına taşıyordu (Onur: "aşağı çok uzuyor").
+const BOLT_IMPACT_Y := 0.62
+
 func _lightning(target_pos: Vector3) -> void:
+	var base := target_pos + Vector3(0, BOLT_IMPACT_Y, 0)
+	# [genişlik çarpanı, renk, alfa, titreşim faz kayması]
+	var layers := [
+		[2.3, Color(0.30, 0.48, 1.0), 0.5, 0],   # dış hale
+		[1.0, Color(0.72, 0.86, 1.0), 1.0, 1],   # gövde
+		[0.38, Color(1.0, 1.0, 1.0), 1.0, 2],    # sıcak çekirdek
+	]
+	for L in layers:
+		_bolt_layer(base, float(L[0]), L[1], float(L[2]), int(L[3]))
+
+	# Çarpma: kıvılcım + flaş (halka YOK — Onur: "alta çıkan yuvarlak şeyi
+	# kaldıralım"; zeminde yatan disk izometride yamalı duruyordu)
+	_sparks(base, Color(0.65, 0.85, 1.0), 1.7)
+	_flash(base, Color(0.8, 0.9, 1.0), 0.85)
+
+	# Kısa mavi ışık patlaması — sahne gerçekten aydınlanır (sadece additive quad değil)
+	var lamp := OmniLight3D.new()
+	lamp.light_color = Color(0.6, 0.78, 1.0)
+	lamp.light_energy = 0.0
+	lamp.omni_range = 5.0
+	lamp.shadow_enabled = false
+	_board.add_child(lamp)
+	lamp.position = base + Vector3(0, 0.6, 0)
+	var lt := lamp.create_tween()
+	lt.tween_property(lamp, "light_energy", 7.0, 0.03 / speed)
+	lt.tween_property(lamp, "light_energy", 1.5, 0.06 / speed)
+	lt.tween_property(lamp, "light_energy", 4.0, 0.05 / speed)
+	lt.tween_property(lamp, "light_energy", 0.0, 0.22 / speed)
+	lt.tween_callback(lamp.queue_free)
+
+	if camera_rig:
+		camera_rig.shake(0.32, 0.26)
+	AudioDirector.play_sfx(&"electric", 0.05)
+
+## Tek şimşek katmanı: tepeden aşağı iner, faz kaydırmalı titrer, söner.
+func _bolt_layer(base: Vector3, width_mul: float, color: Color, alpha: float,
+		phase: int) -> void:
+	var w := BOLT_H * BOLT_ASPECT * width_mul
 	var mi := MeshInstance3D.new()
 	var q := QuadMesh.new()
-	q.size = Vector2(1.3, 3.4)
-	q.center_offset = Vector3(0, q.size.y * 0.5, 0)   # taban origin'de → hedeften yukarı
+	q.size = Vector2(w, BOLT_H)
+	q.center_offset = Vector3(0, -BOLT_H * 0.5, 0)   # pivot TEPEDE → aşağı doğru büyür
 	mi.mesh = q
 	var m := StandardMaterial3D.new()
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 	m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	m.billboard_keep_scale = true   # yoksa billboard scale'i ezer, iniş animasyonu ölür
 	m.albedo_texture = FX_LIGHTNING
-	m.albedo_color = Color(0.75, 0.85, 1.0)   # hafif mavi-beyaz
+	m.albedo_color = Color(color.r, color.g, color.b, alpha)
 	m.no_depth_test = true
+	# Katmanları ayna/kaydırma ile farklılaştır → üst üste bindirilmiş aynı görsel olmasın
+	if phase == 2:
+		m.uv1_scale = Vector3(-1.0, 1.0, 1.0)
+		m.uv1_offset = Vector3(1.0, 0.0, 0.0)
 	mi.material_override = m
-	mi.position = target_pos + Vector3(0, 0.1, 0)
+	mi.position = base + Vector3(0, BOLT_H, 0)
+	mi.scale = Vector3(1.0, 0.06, 1.0)
 	_board.add_child(mi)
-	# Çakma: birkaç kez yanıp sön (flicker) → kaybol
+
+	var strike := mi.create_tween()
+	strike.tween_property(mi, "scale", Vector3.ONE, 0.045 / speed) \
+		.set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+
+	# Faz kaydırmalı titreşim: her katman farklı ritimde → kaynayan elektrik
+	var seq: Array = [[1.0, 0.2, 0.85, 0.1, 0.55], [0.6, 1.0, 0.15, 0.8, 0.3],
+		[1.0, 0.45, 1.0, 0.25, 0.7]][phase]
 	var tw := mi.create_tween()
-	for a in [1.0, 0.25, 0.9, 0.15, 0.6]:
-		tw.tween_property(m, "albedo_color:a", a, 0.05 / speed)
-	tw.tween_property(m, "albedo_color:a", 0.0, 0.08 / speed)
+	tw.tween_interval(0.03 / speed)
+	for a: float in seq:
+		tw.tween_property(m, "albedo_color:a", a * alpha, 0.045 / speed)
+	tw.tween_property(m, "albedo_color:a", 0.0, 0.1 / speed)
 	tw.tween_callback(mi.queue_free)
-	# Hedefte parlak mavi-beyaz flaş + sarsıntı + elektrik sesi
-	_flash(target_pos + Vector3(0, 0.55, 0), Color(0.7, 0.85, 1.0), 1.4)
-	if camera_rig:
-		camera_rig.shake(0.28, 0.24)
-	AudioDirector.play_sfx(&"electric", 0.05)
+
+## BOSS alev nefesi. Ağızdan hedefe doğru AÇILAN bir koni: sıra sıra alev puf'ları
+## ağızdan başlayıp hedefe doğru gecikmeli patlar (nefesin ilerlediği okunur), ağızda
+## dar ve beyaz-sıcak, hedefte geniş ve kızıl. Üstüne parçacık akışı, namlu parlaması,
+## turuncu ışık ve hedefte tutuşma.
+func _fire_breath(mouth: Vector3, dst_pos: Vector3) -> void:
+	var aim := dst_pos + Vector3(0, 0.5, 0)
+	var dir := aim - mouth
+	var dist := maxf(dir.length(), 0.001)
+
+	# --- koni gövdesi: hat boyunca büyüyen alev puf'ları ---
+	const PUFFS := 9
+	for i in PUFFS:
+		var t := float(i) / float(PUFFS - 1)
+		var pos := mouth.lerp(aim, t)
+		var size := lerpf(0.3, 1.25, t)                       # ağızda dar, hedefte geniş
+		var col := Color(1.0, 0.94, 0.68).lerp(Color(1.0, 0.32, 0.05), t)
+		var mi := _fx_quad(FX_FIRE, col)
+		_board.add_child(mi)
+		mi.position = pos
+		mi.scale = Vector3.ONE * size * 0.25
+		var mat: StandardMaterial3D = mi.mesh.material
+		var tw := mi.create_tween()
+		tw.tween_interval(t * 0.10 / speed)                   # nefes ağızdan hedefe ilerler
+		tw.tween_property(mi, "scale", Vector3.ONE * size, 0.07 / speed) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_interval(0.11 / speed)
+		tw.parallel().tween_property(mi, "scale", Vector3.ONE * size * 1.25, 0.2 / speed)
+		tw.tween_property(mat, "albedo_color:a", 0.0, 0.2 / speed)
+		tw.tween_callback(mi.queue_free)
+
+	# --- namlu: ağızda sıcak parlama + turuncu ışık ---
+	_flash(mouth, Color(1.0, 0.85, 0.5), 0.65)
+	var lamp := OmniLight3D.new()
+	lamp.light_color = Color(1.0, 0.6, 0.25)
+	lamp.light_energy = 0.0
+	lamp.omni_range = 4.5
+	lamp.shadow_enabled = false
+	_board.add_child(lamp)
+	lamp.position = mouth.lerp(aim, 0.35)
+	var lt := lamp.create_tween()
+	lt.tween_property(lamp, "light_energy", 5.0, 0.08 / speed)
+	lt.tween_property(lamp, "light_energy", 0.0, 0.4 / speed)
+	lt.tween_callback(lamp.queue_free)
+
+	var p := GPUParticles3D.new()
+	p.amount = 46
+	p.lifetime = 0.42
+	p.one_shot = true
+	p.explosiveness = 0.35        # sürekli püskürtme hissi (hepsi aynı anda değil)
+	p.position = mouth
+	var mat := ParticleProcessMaterial.new()
+	mat.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	mat.emission_sphere_radius = 0.12
+	mat.direction = dir / dist
+	mat.spread = 14.0
+	mat.initial_velocity_min = dist / p.lifetime * 0.8
+	mat.initial_velocity_max = dist / p.lifetime * 1.25
+	mat.gravity = Vector3(0, 1.4, 0)   # kor yukarı kıvrılır
+	mat.damping_min = 0.6
+	mat.damping_max = 1.6
+	mat.scale_min = 0.7
+	mat.scale_max = 1.5
+	var sc := Curve.new()               # uçarken şişip söner
+	sc.add_point(Vector2(0, 0.35))
+	sc.add_point(Vector2(0.45, 1.0))
+	sc.add_point(Vector2(1, 0.2))
+	var sct := CurveTexture.new()
+	sct.curve = sc
+	mat.scale_curve = sct
+	var grad := Gradient.new()          # beyaz-sarı çekirdek → turuncu → koyu duman
+	grad.set_color(0, Color(1.0, 0.95, 0.65, 1.0))
+	grad.set_color(1, Color(0.55, 0.12, 0.03, 0.0))
+	var gt := GradientTexture1D.new()
+	gt.gradient = grad
+	mat.color_ramp = gt
+	p.process_material = mat
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.34, 0.34)
+	var fm := _fx_material(FX_FIRE, Color(1.0, 0.72, 0.35))
+	fm.vertex_color_use_as_albedo = true
+	quad.material = fm
+	p.draw_pass_1 = quad
+	_board.add_child(p)
+	p.emitting = true
+	var t := p.create_tween()
+	t.tween_interval(0.9)
+	t.tween_callback(p.queue_free)
+
+	# Hedefte tutuşma + sıcak flaş
+	_flame(dst_pos, false)
+	_flash(aim, Color(1.0, 0.72, 0.35), 1.0)
+	_sparks(aim, Color(1.0, 0.6, 0.2), 1.4)
+	AudioDirector.play_sfx(&"fire", 0.06)
 
 ## Sinerji/tabya çağrısı (Balatro "Kutsal Bağ ×1.4!"): gotik başlık, dramatik pop.
 func _callout(world_pos: Vector3, text: String, color: Color) -> void:

@@ -2,7 +2,7 @@ class_name DeploymentUI
 extends CanvasLayer
 ## Savaş ekranı UI'ı (CLAUDE.md §19).
 ## Deployment modu: bölük kartları + Mevzi + SAVAŞ butonu.
-## Savaş modu: 1x/2x/Atla kontrolleri + tur göstergesi.
+## Savaş modu: 1x/2x/3x/Atla kontrolleri + tur göstergesi.
 ## Sonuç: ZAFER/YENİLGİ + tekrar butonu.
 
 signal card_pressed(index: int)
@@ -158,8 +158,9 @@ func build(squad: Array) -> void:
 
 	_build_speed_controls()
 
-	# İlk savaşta "Nasıl Oynanır" otomatik açılır (oturumda bir kez)
-	if not _howto_shown:
+	# İlk savaşta "Nasıl Oynanır" otomatik açılır (oturumda bir kez).
+	# --nohelp: görsel doğrulama/ekran görüntüsü alırken modalı bastır.
+	if not _howto_shown and not OS.get_cmdline_user_args().has("--nohelp"):
 		_howto_shown = true
 		_open_how_to_play.call_deferred()
 
@@ -172,7 +173,7 @@ func _build_speed_controls() -> void:
 	_speed_box.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	_speed_box.visible = false
 	_root.add_child(_speed_box)
-	for cfg in [["1x", 1.0], ["2x", 2.0]]:
+	for cfg in [["1x", 1.0], ["2x", 2.0], ["3x", 3.0]]:
 		var btn := Button.new()
 		btn.text = cfg[0]
 		btn.custom_minimum_size = Vector2(70, 48)

@@ -21,6 +21,11 @@ const SPRITE_SCALE := {
 	"kuzu": 1.0,
 }
 
+## Birim sprite'ının sığdığı dünya kutusu. Genişlik tile elmasının ekran genişliğinin
+## (√2≈1.41) altında kalır ki komşu karelere taşmasın. Boss da bu kutuyu kullanır.
+const SPRITE_MAX_W := 1.2
+const SPRITE_MAX_H := 1.45
+
 var _visual: Node3D          # MeshInstance3D (kapsül) veya Sprite3D
 var _visual_h := 0.9         # görsel yükseklik (etiket konumu için)
 var _is_sprite := false
@@ -91,12 +96,19 @@ func setup_flag(side_blue: bool, hp: int) -> void:
 	mat.shader = FLAG_WAVE
 	mat.set_shader_parameter("tex", tex)
 	sprite.material_override = mat
-	# ~1.75 dünya boyu; ayaklar tile yüzeyinde (y=0), yatayda ortalı
+	# ~1.75 dünya boyu, yatayda ortalı.
+	# DİKEY ÇİPA: sprite'ın alt kenarını tile merkezine oturtmak YANLIŞ görünüyor —
+	# taş kaide izometrik çizili, alt kenar kaidenin ÖN-ALT çizgisi, ayak izinin
+	# merkezi değil. Böyle konursa kaide elmasın arka yarısında duruyor (Onur:
+	# "tile'ın ortasında değil, yukarıda duruyor"). Kaidenin ayak izi merkezi,
+	# alt kenardan ~FOOT_INSET_PX yukarıda; sprite'ı o kadar GÖMÜYORUZ ki ayak izi
+	# merkezi tile üst yüzüne otursun.
 	const FLAG_WORLD_H := 1.75
+	const FOOT_INSET_PX := 15.0   # kaide taban elmasının yarı-derinliği (250px sprite'ta)
 	var px := FLAG_WORLD_H / float(tex.get_height())
 	sprite.pixel_size = px
 	var world_h := tex.get_height() * px
-	sprite.position.y = world_h * 0.5
+	sprite.position.y = world_h * 0.5 - FOOT_INSET_PX * px
 	add_child(sprite)
 	_visual = sprite
 	_visual_h = world_h
@@ -112,9 +124,79 @@ func setup_flag(side_blue: bool, hp: int) -> void:
 	_flag_hp_label.font_size = 56
 	_flag_hp_label.outline_size = 12
 	_flag_hp_label.modulate = Color(0.95, 0.55, 0.5) if not side_blue else Color(0.65, 0.8, 1.0)
-	# kaidenin ÖNÜNDE, tile yüzeyinde — taş kaidenin arkasında kalmasın (Onur: "can
-	# assetin altında kalıyor"). Kameraya doğru (+z) itilir, no_depth_test üstte çizer.
-	_flag_hp_label.position = Vector3(0, 0.04, 0.62)
+	# Kaidenin TAM ALTINDA, ekran-dikeyinde ortalı. Dünya +z ofseti kullanılmaz:
+	# izometrik yaw'da +z ekranda aşağı-SOLA kayıyordu (sayı bayraktan kopuk duruyordu).
+	# no_depth_test zaten taş kaidenin üstünde çizdiriyor; billboard offset ile
+	# piksel-uzayında aşağı it → hangi yaw'da olursak olalım kaidenin altında kalır.
+	_flag_hp_label.position = Vector3(0, 0.02, 0)
+	_flag_hp_label.offset = Vector2(0, -58)   # −y = aşağı (billboard piksel uzayı)
+	add_child(_flag_hp_label)
+	_max_hp = hp
+
+## BOSS ejderha (boss düğümlerinde düşman bayrağının yerine geçer).
+## `assets/bosses/ejderha.png`: 6 kare yatay sheet, hücre 460×474, göz-hizalı
+## (scratchpad/build_sheet.ps1 üretti; mavi zemin ve mavi hale temizlendi).
+const BOSS_TEX := preload("res://assets/bosses/ejderha.png")
+const BOSS_FRAMES := 6
+const BOSS_CELL := Vector2(460.0, 474.0)
+## Kanat çırpma animasyonu KAPALI (Onur: "tek başına dursun"). 2 numaralı kare:
+## kanatlar iki yana simetrik açık — tünemiş, heybetli duruş.
+const BOSS_IDLE_FRAME := 2
+## BOSS_IDLE_FRAME'in hücre içindeki GERÇEK dolu sınırları (alfa bbox; ölçüldü).
+## Hücre 460×474 ama kare yalnız bu kutuyu doldurur — altta 54px, üstte 144px boş pay
+## var. Sprite'ı hücreye göre konumlamak/ölçeklemek ejderhayı tile'da ortalamıyordu.
+const BOSS_BBOX_MIN := Vector2(6.0, 144.0)
+const BOSS_BBOX_MAX := Vector2(453.0, 420.0)
+## Alevin çıktığı nokta: burun ucu (hücre içi piksel, sol-üst orijinli, ızgaralı zoom).
+const BOSS_MOUTH_PX := Vector2(100.0, 300.0)
+## Ejderha diğer birimlerle AYNI kutuya sığar (Onur): SPRITE_MAX_W/H + kuzu'nun payı.
+## Ölçek artık sınırlardan türer; elle girilen dünya boyu yok.
+const BOSS_EXTRA := 1.12
+
+var _is_boss := false
+var _boss_sprite: Sprite3D
+
+func setup_boss(hp: int) -> void:
+	_is_flag = true      # HP göstergesi + stat plakası yok; bayrak yolu kullanılır
+	_is_boss = true
+	var sprite := Sprite3D.new()
+	sprite.texture = BOSS_TEX
+	sprite.hframes = BOSS_FRAMES
+	sprite.frame = BOSS_IDLE_FRAME
+	sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	sprite.shaded = false
+	sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISABLED
+	sprite.no_depth_test = false
+	sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
+
+	# Kutuya-sığdır: DOLU sınırlar (hücre değil) birimlerinkiyle aynı kutuya girer
+	var body := BOSS_BBOX_MAX - BOSS_BBOX_MIN + Vector2.ONE
+	var px := minf(SPRITE_MAX_W * BOSS_EXTRA / body.x, SPRITE_MAX_H * BOSS_EXTRA / body.y)
+	sprite.pixel_size = px
+	# Hücre merkezini kutunun ALT-ORTA noktasına taşı → pençeler y=0'da, gövde ortalı.
+	# Sprite3D.offset piksel cinsinden; +y YUKARI, doku y'si aşağı olduğundan işaret ters.
+	var cell_center := BOSS_CELL * 0.5
+	var foot_center := Vector2((BOSS_BBOX_MIN.x + BOSS_BBOX_MAX.x) * 0.5, BOSS_BBOX_MAX.y)
+	sprite.offset = Vector2(cell_center.x - foot_center.x, foot_center.y - cell_center.y)
+	add_child(sprite)
+	_boss_sprite = sprite
+	_visual = sprite
+	_visual_h = body.y * px
+	_is_sprite = true      # hit_flash modulate yolu
+	_add_blob_shadow(1.0)
+
+	_flag_hp_label = Label3D.new()
+	_flag_hp_label.text = str(hp)
+	_flag_hp_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_flag_hp_label.no_depth_test = true
+	_flag_hp_label.pixel_size = 0.009
+	_flag_hp_label.font = UITheme.body_font()
+	_flag_hp_label.font_size = 56
+	_flag_hp_label.outline_size = 14
+	_flag_hp_label.modulate = Color(1.0, 0.5, 0.35)
+	# Pençelerin (tile yüzeyi) hemen altında
+	_flag_hp_label.position = Vector3(0, 0.02, 0)
+	_flag_hp_label.offset = Vector2(0, -44)
 	add_child(_flag_hp_label)
 	_max_hp = hp
 
@@ -161,8 +243,6 @@ func _setup_sprite(path: String, scale_mul: float) -> void:
 	# kuzu kadar doldurmadığından büyütülür; kuzu referans (1.0).
 	var key := path.get_file().get_basename()
 	var extra: float = SPRITE_SCALE.get(key, 1.12)
-	const SPRITE_MAX_W := 1.2
-	const SPRITE_MAX_H := 1.45
 	var px := minf(SPRITE_MAX_W * scale_mul * extra / float(tex.get_width()),
 		SPRITE_MAX_H * scale_mul * extra / float(tex.get_height()))
 	sprite.pixel_size = px
@@ -198,6 +278,22 @@ func _add_blob_shadow(scale_mul: float) -> void:
 	tree_exiting.connect(func():
 		if is_instance_valid(_shadow_root):
 			_shadow_root.queue_free())
+
+## Ejderhanın ağzının DÜNYA konumu (alev buradan çıkar). Sprite billboard olduğundan
+## hücre-içi piksel ofseti, kameranın sağ/yukarı eksenlerine göre çözülür.
+func boss_mouth_position() -> Vector3:
+	if not _is_boss or _boss_sprite == null:
+		return global_position + Vector3(0, 1.0, 0)
+	var px: float = _boss_sprite.pixel_size
+	# Node orijini = kutunun alt-ortası (bkz. setup_boss). Ağzın oraya göre sapması:
+	var foot_center := Vector2((BOSS_BBOX_MIN.x + BOSS_BBOX_MAX.x) * 0.5, BOSS_BBOX_MAX.y)
+	var off := (BOSS_MOUTH_PX - foot_center) * px
+	var origin := _boss_sprite.global_position
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return origin + Vector3(off.x, -off.y, 0)
+	var b := cam.global_transform.basis
+	return origin + b.x * off.x - b.y * off.y   # doku y'si aşağı pozitif
 
 func _process(_dt: float) -> void:
 	if _shadow_root and _shadow_root.is_inside_tree():

@@ -30,7 +30,7 @@ func _ready() -> void:
 	for i in POOL_SIZE:
 		var p := AudioStreamPlayer.new()
 		p.bus = "Master"
-		p.volume_db = -3.0
+		p.volume_db = SFX_VOL_DB
 		add_child(p)
 		_players.append(p)
 	_music = AudioStreamPlayer.new()
@@ -48,15 +48,44 @@ func _ready() -> void:
 func register_sfx(id: StringName, stream: AudioStream) -> void:
 	_sfx[id] = stream
 
+const SFX_VOL_DB := -3.0
+
+## Bazı kaynak dosyalar uzun kuyruklu (örn. sfx_electric ~3 sn). Havuz oyuncusu sesi
+## sonuna kadar çalıyordu → şimşek çakıp bittikten çok sonra bile vızıltı sürüyordu.
+## Kesme süresi (sn) → o süre sonunda kısa fade-out + stop. 0 = tam uzunluk.
+const SFX_MAX_SEC := {
+	&"electric": 0.5,
+	&"fire": 0.7,
+	&"arrow": 0.55,
+}
+
+var _cut_tw: Dictionary = {}   # AudioStreamPlayer -> Tween (yeniden kullanımda iptal)
+
 func play_sfx(id: StringName, pitch_jitter: float = 0.0) -> void:
 	var stream: AudioStream = _sfx.get(id)
 	if stream == null:
 		return # ses henüz bağlanmadı — sessizce geç
 	for p in _players:
 		if not p.playing:
+			# Bu oyuncu daha önce kesme tween'iyle kısılmış olabilir — iptal et ve sıfırla
+			var old: Tween = _cut_tw.get(p)
+			if old != null and old.is_valid():
+				old.kill()
+			_cut_tw.erase(p)
+			p.volume_db = SFX_VOL_DB
 			p.stream = stream
 			p.pitch_scale = 1.0 + randf_range(-pitch_jitter, pitch_jitter)
 			p.play()
+			var cut: float = SFX_MAX_SEC.get(id, 0.0)
+			if cut > 0.0:
+				var tw := create_tween()
+				tw.tween_interval(cut)
+				tw.tween_property(p, "volume_db", -40.0, 0.1)
+				tw.tween_callback(func() -> void:
+					p.stop()
+					p.volume_db = SFX_VOL_DB
+					_cut_tw.erase(p))
+				_cut_tw[p] = tw
 			return
 
 ## Döngülü müzik başlat (aynı parça çalıyorsa yeniden başlatma)
