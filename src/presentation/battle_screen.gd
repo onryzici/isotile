@@ -889,12 +889,32 @@ func _cancel_targeting() -> void:
 	_targeting = false
 	_refresh_overlays()
 
-## Düşman sancağının/boss'un ekran noktası (tutorial oku buraya işaret eder)
-func banner_screen_pos() -> Vector2:
+## Düşman sancağının/boss'un ekran bölgesi (tutorial spotlight'ı burayı açık bırakır)
+func banner_screen_rect() -> Rect2:
 	if _enemy_flag_view == null or not is_instance_valid(_enemy_flag_view):
-		return Vector2.ZERO
-	return camera_rig.camera.unproject_position(
-		_enemy_flag_view.position + Vector3(0, 1.0, 0))
+		return Rect2()
+	var cam := camera_rig.camera
+	var base := cam.unproject_position(_enemy_flag_view.position)
+	var tepe := cam.unproject_position(_enemy_flag_view.position + Vector3(0, 1.7, 0))
+	var r := Rect2(tepe, Vector2.ZERO).expand(base)
+	return r.grow_individual(85.0, 20.0, 85.0, 55.0)
+
+## Oyuncu dizilim bölgesinin (satır 1-2) ekran dikdörtgeni (tutorial spotlight)
+func deploy_zone_screen_rect() -> Rect2:
+	var cam := camera_rig.camera
+	var r := Rect2()
+	var first := true
+	for row in BoardDefs.PLAYER_ROWS:
+		for col in BoardDefs.COLS:
+			var coord := Vector2i(col, row)
+			var w := board.coord_to_world(coord)
+			var p := cam.unproject_position(Vector3(w.x, board.tile_top_y(coord), w.z))
+			if first:
+				r = Rect2(p, Vector2.ZERO)
+				first = false
+			else:
+				r = r.expand(p)
+	return r.grow(70.0)
 
 ## Tıklanan tile'daki düşmana yıldırım hasarı uygula
 func _commander_target(coord: Vector2i) -> void:

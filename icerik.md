@@ -298,8 +298,11 @@ güncellenir → bir üst çile açılır. Kayıtta run `ordeal`, meta `ordeal_b
   dili) — Kara Pus / Kurt Tarikatı / "son sürüyü topla". `meta_intro_seen` ile bir kez.
 - **Savaş koçu** (`tutorial_coach.gd`, zorla: `--koc`): TAM A-E akışı, gated 9 adım —
   kart seç → yerleştir → SAVAŞ → izle → sancak tanıtımı (ok + Tamam) → D: yeni birim /
-  taşı / Kumandan yeteneği (her biri Geç'lenebilir) → "sancağı yık". Balondan hedefe
-  animasyonlu İŞARET OKU (kart barı / SAVAŞ butonu / düşman sancağı / kumandan butonu).
+  taşı / Kumandan yeteneği (her biri Geç'lenebilir) → "sancağı yık". SPOTLIGHT:
+  ekran yarı saydam siyahla kararır, yalnız ilgili bölge açık kalır
+  (`tutorial_spotlight.gdshader`, yumuşak kenarlı delik); yazı balonu bölgenin
+  hemen altında/üstünde durur. Bölgeler: kart barı / dizilim sahası / SAVAŞ
+  butonu / düşman sancağı / kumandan butonu.
   Taşıma tespiti recall→deploy dizisinden; kumandan `EventBus.commander_used`.
   Zafer → `meta_tutorial_done` + geçici `tutorial_just_done`: RewardScreen ödül
   tanıtımı yazısı + haritada tek seferlik "yol ayrımı" balonu (§3.4). Koç varken

@@ -30,17 +30,25 @@ var _cmd_button: Button      # kumandan yeteneği (§B.0/4)
 
 static var _howto_shown := false   # "Nasıl Oynanır" oturumda bir kez otomatik açılır
 
-## Tutorial ok çipaları (§3.3): koç bu noktalara işaret eder
-func card_bar_center() -> Vector2:
+## Tutorial spotlight bölgeleri (§3.3): koç bu dikdörtgenleri aydınlık bırakır
+func card_bar_rect() -> Rect2:
+	var r := Rect2()
+	var first := true
 	for c in _cards:
-		if is_instance_valid(c) and not c._deployed:
-			return c.get_global_rect().get_center()
-	return _cards[0].get_global_rect().get_center() if not _cards.is_empty() else Vector2.ZERO
+		if not is_instance_valid(c):
+			continue
+		var g := c.get_global_rect()
+		if first:
+			r = g
+			first = false
+		else:
+			r = r.merge(g)
+	return r.grow(12.0)
 
-func commander_center() -> Vector2:
+func commander_rect() -> Rect2:
 	if _cmd_button and is_instance_valid(_cmd_button):
-		return _cmd_button.get_global_rect().get_center()
-	return Vector2.ZERO
+		return _cmd_button.get_global_rect().grow(10.0)
+	return Rect2()
 var _root: Control
 var _cards: Array[UnitCard] = []
 var _mevzi_label: Label      # üst bar Mevzi değeri
