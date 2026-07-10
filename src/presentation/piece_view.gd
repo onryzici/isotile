@@ -72,35 +72,31 @@ func setup(class_key: StringName, stat_text: String, scale_mul: float = 1.0, spr
 	_status_label.position.y = _visual_h + 0.12
 	add_child(_status_label)
 
-## Bayrak/hedef nişanı (§B.0/1): elle boyanmış sancak sprite'ı (Onur art'ı) —
-## mavi=oyuncu, kızıl=düşman (mavinin R↔B recolor'u). Sadece KUMAŞ bandı
-## flag_wave shader'ıyla hafifçe dalgalanır; gönder/kaide sabit.
-const FLAG_BLUE := preload("res://assets/props/flag_blue.png")
-const FLAG_RED := preload("res://assets/props/flag_red.png")
-const FLAG_WAVE := preload("res://shaders/flag_wave.gdshader")
-
+## Bayrak/hedef nişanı (§B.0/1): TEMSİLİ KUTU (dummy §18 dili — sancak sanatı
+## kaldırıldı, Onur isteği). Mavi=oyuncu, kızıl=düşman; kapsülle aynı
+## toon+outline yolu → _mat dolu, hit_flash emission'ı çalışır.
 func setup_flag(side_blue: bool, hp: int) -> void:
 	_is_flag = true
-	var tex: Texture2D = FLAG_BLUE if side_blue else FLAG_RED
-	var sprite := Sprite3D.new()
-	sprite.texture = tex
-	sprite.billboard = BaseMaterial3D.BILLBOARD_DISABLED   # shader'da billboard
-	sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISABLED
-	sprite.no_depth_test = false
-	var mat := ShaderMaterial.new()
-	mat.shader = FLAG_WAVE
-	mat.set_shader_parameter("tex", tex)
-	sprite.material_override = mat
-	# ~1.75 dünya boyu; ayaklar tile yüzeyinde (y=0), yatayda ortalı
-	const FLAG_WORLD_H := 1.75
-	var px := FLAG_WORLD_H / float(tex.get_height())
-	sprite.pixel_size = px
-	var world_h := tex.get_height() * px
-	sprite.position.y = world_h * 0.5
-	add_child(sprite)
-	_visual = sprite
-	_visual_h = world_h
-	_is_sprite = true            # hit_flash sprite modulate yolunu kullansın
+	var color := Color(0.28, 0.42, 0.62) if side_blue else Color(0.62, 0.24, 0.2)
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3(0.6, 0.72, 0.6)
+	var body := MeshInstance3D.new()
+	body.mesh = mesh
+	body.position.y = mesh.size.y * 0.5
+	_mat = ShaderMaterial.new()
+	_mat.shader = TOON
+	_mat.set_shader_parameter("top_color", color)
+	_mat.set_shader_parameter("use_side_split", false)
+	_mat.set_shader_parameter("mottle_strength", 0.1)
+	var outline := ShaderMaterial.new()
+	outline.shader = OUTLINE
+	outline.set_shader_parameter("grow", 0.045)
+	_mat.next_pass = outline
+	body.material_override = _mat
+	add_child(body)
+	_visual = body
+	_visual_h = mesh.size.y
+	_is_sprite = false
 	_add_blob_shadow(0.7)
 	# CAN göstergesi — bayrağın DİBİNDE (kaide önünde), büyük sayı olarak
 	_flag_hp_label = Label3D.new()
