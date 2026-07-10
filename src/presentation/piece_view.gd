@@ -286,12 +286,14 @@ func _show_hurt_effect(sprite: Sprite3D, _dur: float) -> void:
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	# 3) kısa monokrom tutuş
 	_hurt_tw.tween_interval(0.10)
-	# 4) çıkış strobe'u: renk → tekrar B&W → renk (çift kırpma)
+	# 4) çıkış strobe'u: renk → tekrar B&W (bu kez OTURUR) → yumuşak sönüş
+	# (ikinci beyazlama çok hızlı bitiyordu — Onur)
 	_hurt_tw.tween_callback(func() -> void: set_h.call(0.0))
 	_hurt_tw.tween_interval(0.045)
-	_hurt_tw.tween_callback(func() -> void: set_h.call(0.75))
-	_hurt_tw.tween_interval(0.05)
-	_hurt_tw.tween_callback(func() -> void: set_h.call(0.0))
+	_hurt_tw.tween_callback(func() -> void: set_h.call(0.8))
+	_hurt_tw.tween_interval(0.09)
+	_hurt_tw.tween_method(set_h, 0.8, 0.0, 0.12) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
 
 func hit_flash(dur: float) -> void:
 	if _is_sprite:
