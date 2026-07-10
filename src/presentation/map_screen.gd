@@ -56,6 +56,23 @@ const TYPE_COL := {
 }
 const REGION_NAMES := ["I · PUS ORMANI", "II · KEMİK BATAKLIĞI", "III · KURT İNİ"]
 
+## Düğüm tooltip'leri (§3.4: tipler hover'da tanıtılır)
+const TYPE_DESC := {
+	&"savas": "Çatışma — kazanırsan altın + ödül seçimi",
+	&"elit": "Elit çatışma — zor savaş, büyük ödül",
+	&"boss": "Bölge sonu BOSS — sancağını yık",
+	&"dukkan": "Dükkan — altınla birim / yadigar / hizmet",
+	&"olay": "Kart olayı — dallanan seçim, risk/ödül",
+	&"saman": "Şaman Çadırı — bir kuzuya kalıcı stat",
+	&"revir": "Sahra Revan — sancak onar ya da sürüyü iyileştir",
+	&"mezar": "Gri Mezar — sancak bedeliyle yadigar",
+	&"nitelik": "Nitelik Dükkanı — bir kuzuya tabya ver",
+	&"yadigar": "Yadigar Dükkanı — 2 relic'ten biri bedava",
+	&"daragaci": "Darağacı — kurban et, tabyaları devret",
+	&"meydan": "Meydan — stat kumarı + armağan (zarla çevir)",
+	&"kitapci": "Kitapçı — altınla kullanılabilir eşya",
+}
+
 var _origin := Vector2.ZERO
 var _terrain: Array[Vector2i] = []
 var _edges: Array = []            # {a:Vector2, b:Vector2, state:int}  (0 dim,1 traveled,2 active)
@@ -322,6 +339,7 @@ func _add_node(node: Dictionary, pos: Vector2, state: int) -> void:
 		btn.size = Vector2(r * 2.3, r * 2.3)
 		btn.position = center - btn.size * 0.5
 		btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		btn.tooltip_text = TYPE_DESC.get(type, "")
 		btn.pressed.connect(_on_node_pressed.bind(node))
 		_root.add_child(btn)
 		var tw := create_tween().set_loops()
@@ -415,6 +433,32 @@ func _build_hud() -> void:
 		armed.add_theme_color_override("font_color", Color(0.95, 0.8, 0.5))
 		armed.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		strip.add_child(armed)
+
+	# Tutorial kapanışı (§3.4-5): ilk harita açılışında düğüm rehberi — bir kez
+	if GameState.tutorial_just_done:
+		GameState.tutorial_just_done = false
+		var tp := PanelContainer.new()
+		var tsb := StyleBoxFlat.new()
+		tsb.bg_color = Color(0.06, 0.055, 0.09, 0.95)
+		tsb.border_color = Color(0.85, 0.65, 0.3)
+		tsb.set_border_width_all(1)
+		tsb.set_corner_radius_all(3)
+		tsb.set_content_margin_all(12)
+		tp.add_theme_stylebox_override("panel", tsb)
+		tp.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP,
+			Control.PRESET_MODE_MINSIZE, 70)
+		tp.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		tp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var tl := Label.new()
+		tl.text = "Yol ayrımı: parlayan düğümlerden birini seç — üstüne gel, ne olduğunu gör"
+		tl.add_theme_font_size_override("font_size", 18)
+		tl.add_theme_color_override("font_color", Color(0.96, 0.9, 0.7))
+		tp.add_child(tl)
+		_root.add_child(tp)
+		var ttw := tp.create_tween()
+		ttw.tween_interval(7.0)
+		ttw.tween_property(tp, "modulate:a", 0.0, 0.6)
+		ttw.tween_callback(tp.queue_free)
 
 	var hint := Label.new()
 	hint.text = "Parlayan mavi düğümü seç"

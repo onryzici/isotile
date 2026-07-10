@@ -164,6 +164,17 @@ func _show_menu() -> void:
 		var g := GarrisonScreen.new()
 		g.closed.connect(_show_menu)
 		_show(g))
+	# §3.5: öğreticiyi tekrar oynat — bayraklar sıfırlanır, cold open → meydan
+	m.replay_tutorial.connect(func() -> void:
+		GameState.meta_intro_seen = false
+		GameState.meta_tutorial_done = false
+		GameState.save_meta()
+		var intro := IntroScreen.new()
+		intro.done.connect(func() -> void:
+			GameState.meta_intro_seen = true
+			GameState.save_meta()
+			_show_hub())
+		_show(intro))
 	_show(m)
 
 ## Ağıl Meydanı (gelistirme §2): sefer öncesi hub — run BURADA başlar (Sefere Çık)

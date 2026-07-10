@@ -59,10 +59,24 @@ func _ready() -> void:
 	add_omni(Vector2i(0, 1), Color(1.0, 0.75, 0.4), 1.4, 1.2)     # çadır feneri
 
 	# ── Elmas seçenekler ──
-	add_choice(cell_point(Vector2i(2, 2), 1.75), IC_MAP, "SEFERE ÇIK",
+	# Tutorial (§3.2): ilk seferde TEK tıklanabilir hedef Sefere Çık — o parlar,
+	# gerisi kilitli/soluk.
+	var tutorial := not GameState.meta_tutorial_done
+	var depart_d := add_choice(cell_point(Vector2i(2, 2), 1.75), IC_MAP, "SEFERE ÇIK",
 		Color(0.86, 0.72, 0.36), "Pusa dal — yeni sefer başlar", _on_depart)
-	add_choice(cell_point(Vector2i(0, 1), 1.85), IC_PACK, "GARNİZON",
-		Color(0.45, 0.65, 0.90), "Kalıntı harca — kalıcı tesis kur", _on_garrison)
+	if tutorial:
+		depart_d.pivot_offset = depart_d.size * 0.5
+		var ptw := depart_d.create_tween().set_loops()
+		ptw.tween_property(depart_d, "scale", Vector2(1.14, 1.14), 0.55) \
+			.set_trans(Tween.TRANS_SINE)
+		ptw.tween_property(depart_d, "scale", Vector2.ONE, 0.55) \
+			.set_trans(Tween.TRANS_SINE)
+	var garnizon_d := add_choice(cell_point(Vector2i(0, 1), 1.85), IC_PACK, "GARNİZON",
+		Color(0.45, 0.65, 0.90),
+		"İlk seferden sonra açılır" if tutorial else "Kalıntı harca — kalıcı tesis kur",
+		_on_garrison)
+	if tutorial:
+		set_choice_enabled(garnizon_d, false)
 	var lonca := add_choice(cell_point(Vector2i(4, 0), 1.85), IC_TRAIT, "LONCA",
 		Color(0.5, 0.45, 0.4), "Kumandan ve başlangıç bölüğü seçimi — yakında", func() -> void: pass)
 	set_choice_enabled(lonca, false)
@@ -85,6 +99,9 @@ func _ready() -> void:
 			queue_free())
 
 func _refresh_footer() -> void:
+	if not GameState.meta_tutorial_done:
+		set_footer("Sürünü topla — parlayan SEFERE ÇIK elmasına bas")
+		return
 	var txt := "Kalıntı: %d  ·  soluk elmaslar henüz kilitli" % GameState.meta_kalinti
 	if _ordeal > 0:
 		txt += "\nÇile %d: %s  ·  Kalıntı ödülü ×%.1f" % [_ordeal,

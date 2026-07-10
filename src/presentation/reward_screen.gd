@@ -38,8 +38,13 @@ func _ready() -> void:
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(title)
 	var hint := Label.new()
-	hint.text = "Bir ödül seç"
-	hint.modulate = Color(1, 1, 1, 0.7)
+	# Tutorial E (§3.3): ilk zaferde ödül seçimi tanıtılır
+	if GameState.tutorial_just_done:
+		hint.text = "İlk ödülün: üçünden birini seç — bölüğün böyle büyür"
+		hint.add_theme_color_override("font_color", Color(0.96, 0.9, 0.7))
+	else:
+		hint.text = "Bir ödül seç"
+		hint.modulate = Color(1, 1, 1, 0.7)
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(hint)
 

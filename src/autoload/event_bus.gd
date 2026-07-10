@@ -15,3 +15,4 @@ signal mevzi_changed(current: int)
 # Savaş akışı
 signal battle_started
 signal battle_finished(player_won: bool)
+signal commander_used                          # kumandan yeteneği uygulandı (tutorial D3)

@@ -6,6 +6,7 @@ extends Node
 signal new_run
 signal continue_run
 signal open_garrison
+signal replay_tutorial
 
 var _ui: CanvasLayer
 var _root: Control
@@ -78,6 +79,10 @@ func _build() -> void:
 		else:
 			new_run.emit()))
 	stack.add_child(_menu_button("GARNİZON", false, func() -> void: open_garrison.emit()))
+	# §3.5: tutorial bir daha zorlanmaz ama buradan tekrar oynatılabilir
+	if GameState.meta_tutorial_done:
+		stack.add_child(_menu_button("ÖĞRETİCİYİ OYNAT", false, func() -> void:
+			replay_tutorial.emit()))
 	stack.add_child(_menu_button("MASAÜSTÜNE ÇIK", false, func() -> void: get_tree().quit()))
 
 	var ver := Label.new()

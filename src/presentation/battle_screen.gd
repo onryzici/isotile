@@ -33,6 +33,7 @@ enum Phase { DEPLOY, PLANNING, RESOLVING, DONE }
 
 ## Tur-tur savaş durumu (§B.0/3)
 var _units: Array = []                  # kalıcı CombatUnit listesi
+var _coach: TutorialCoach = null        # ilk savaş öğreticisi (§3.3)
 var _combat_state: Dictionary = {}      # diken vb. tur-arası korunan
 var _round := 0
 var _presenter: CombatPresenter
@@ -432,11 +433,11 @@ func _setup_ui() -> void:
 	ui.restart_pressed.connect(func(): EventBus.return_to_map.emit(_last_won))
 	# İlk savaş öğreticisi (gelistirme §3.3): gated adım şeridi. Otomatik test
 	# koşularında (--autobattle) tutorial'ı sessizce tamamlamış saymamak için atla.
-	if not GameState.meta_tutorial_done \
+	if (not GameState.meta_tutorial_done or OS.get_cmdline_user_args().has("--koc")) \
 			and not OS.get_cmdline_user_args().has("--autobattle"):
-		var coach := TutorialCoach.new()
-		ui.add_child(coach)
-		coach.attach(ui)
+		_coach = TutorialCoach.new()
+		ui.add_child(_coach)
+		_coach.attach(ui, self)
 	_hand = HandCursor.new()
 	add_child(_hand)
 
@@ -850,6 +851,8 @@ func _enter_planning() -> void:
 	_cmd_cd = maxi(0, _cmd_cd - 1)
 	ui.enter_planning_mode(deployment.mevzi)
 	ui.set_commander(_cmd_cd == 0, _cmd_cd)
+	if is_instance_valid(_coach):
+		_coach.on_planning()
 	_refresh_overlays()
 
 # ------------------------------------------------------------------ kumandan (§B.0/4)
@@ -862,6 +865,7 @@ func _on_commander() -> void:
 		_apply_heal_wave()
 		_cmd_cd = _cmd["cd"]
 		ui.set_commander(false, _cmd_cd)
+		EventBus.commander_used.emit()
 		return
 	_targeting = true
 	_deselect()
@@ -885,6 +889,13 @@ func _cancel_targeting() -> void:
 	_targeting = false
 	_refresh_overlays()
 
+## Düşman sancağının/boss'un ekran noktası (tutorial oku buraya işaret eder)
+func banner_screen_pos() -> Vector2:
+	if _enemy_flag_view == null or not is_instance_valid(_enemy_flag_view):
+		return Vector2.ZERO
+	return camera_rig.camera.unproject_position(
+		_enemy_flag_view.position + Vector3(0, 1.0, 0))
+
 ## Tıklanan tile'daki düşmana yıldırım hasarı uygula
 func _commander_target(coord: Vector2i) -> void:
 	var target: CombatUnit = null
@@ -903,6 +914,7 @@ func _commander_target(coord: Vector2i) -> void:
 		_finish_battle()
 
 func _apply_commander_bolt(u: CombatUnit) -> void:
+	EventBus.commander_used.emit()
 	var dmg: int = _cmd["deger"]
 	var absorbed := mini(dmg, u.kalkan)
 	u.kalkan -= absorbed

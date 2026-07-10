@@ -24,6 +24,7 @@ const ORDEAL_MAX := 3
 var meta_ordeal_best := -1                # en yüksek TAMAMLANAN çile (−1 = ilk zafer henüz yok)
 var meta_intro_seen := false              # cold open bir kez zorlanır (§3.1)
 var meta_tutorial_done := false           # ilk savaş koçu bir kez zorlanır (§3.3)
+var tutorial_just_done := false           # geçici: ödül + harita tanıtımı sürsün (§3.3 E / §3.4)
 
 ## Seçilebilir en yüksek çile: tamamlananın bir üstü (ilk zafer çile 1'i açar)
 func ordeal_cap() -> int:

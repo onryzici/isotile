@@ -114,3 +114,9 @@
 - İlk oyun akışı (gelistirme §3): cold open anlatı kartı (ilk açılış, `--intro`) +
   ilk savaşta 3 adımlı gated öğretici şeridi (kart seç → yerleştir → SAVAŞ; adım
   pipleri, tamamlanınca meta'ya yazılır, "Nasıl Oynanır" modalını bastırır).
+- Tutorial tam akışa çıkarıldı (gelistirme §3 birebir): kilitli meydan (tek hedef
+  SEFERE ÇIK, nabızlı), 9 adımlı gated savaş koçu (A-E: yerleştir/savaş/sancak
+  tanıtımı/yeni birim/taşı/kumandan/yık) + hedefe animasyonlu işaret oku, ödül
+  tanıtımı, harita düğüm tooltipleri + yol ayrımı balonu, menüden tekrar oynatma.
+  Koç paneli viewport'a göre elle ortalanır (yanda kayma düzeltildi), çakışan üst
+  ipucu yazısı koç aktifken gizlenir.
