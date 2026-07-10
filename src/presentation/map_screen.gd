@@ -443,31 +443,11 @@ const EVENTS := [
 
 func _show_event() -> void:
 	var ev: Dictionary = RNG.pick(EVENTS)
-	var overlay := CenterContainer.new()
-	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_root.add_child(overlay)
-	var panel := PanelContainer.new()
-	overlay.add_child(panel)
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 12)
-	vbox.custom_minimum_size = Vector2(480, 0)
-	panel.add_child(vbox)
-	var title := Label.new()
-	title.theme_type_variation = "Title"
-	title.text = ev["baslik"]
-	title.add_theme_font_size_override("font_size", 24)
-	vbox.add_child(title)
-	var body := Label.new()
-	body.text = ev["metin"]
-	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	vbox.add_child(body)
-	for opt: Dictionary in ev["secenekler"]:
-		var b := Button.new()
-		b.text = opt["ad"]
-		b.focus_mode = Control.FOCUS_NONE
-		b.disabled = GameState.gold < int(opt.get("sart", 0))
-		b.pressed.connect(_apply_event.bind(opt["etki"]))
-		vbox.add_child(b)
+	var card := EventCard.new()
+	_root.add_child(card)
+	card.open(ev)
+	card.choice_made.connect(func(opt: Dictionary) -> void:
+		_apply_event(opt["etki"]))
 
 func _apply_event(etki: String) -> void:
 	var cap := GameState.flag_cap()

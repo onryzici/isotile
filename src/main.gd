@@ -79,7 +79,7 @@ func _setup_grain() -> void:
 			or "--garrison" in args or "--runend" in args \
 			or "--saman" in args or "--revir" in args or "--mezar" in args \
 			or "--nitelik" in args or "--yadigar" in args or "--daragaci" in args \
-			or "--meydan" in args:
+			or "--meydan" in args or "--olay" in args:
 		GameState.start_new_run()
 		for arg in args:
 			if arg.begins_with("--enc="):
@@ -122,6 +122,10 @@ func _setup_grain() -> void:
 		elif "--meydan" in args:
 			_node_type = &"meydan"
 			_show(_make_closable(SaloonScreen.new()))
+		elif "--olay" in args:
+			var mp := MapScreen.new()
+			_show(mp)
+			mp._show_event()
 		elif "--map" in args:
 			_show_map()
 		else:

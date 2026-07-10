@@ -68,3 +68,21 @@
 - `GameState` run durumu: Altın, katman ilerlemesi, bölük CAN kalıcılığı (ölen birim "yaralı" 1 CAN ile döner). [hazır]
 - `MapScreen`: düğüm haritası + ilk olay kartı ("Pus İçinde Bir Yaralı Asker"). [hazır]
 - Sırada: dükkan ekranı, savaşın encounter'dan beslenmesi, zafer ödül akışı, ekran geçişleri.
+
+## M2 tamam + M3 (run + meta) — 2026-07 oturumları
+- Dükkan, ödül ekranı, ekran geçişleri, run sonu ekranı; encounter'dan beslenen savaş.
+- Garnizon meta (Kalıntı parası, 3 tesis), kayıt/yükleme (`user://`), tabya füzyon + sürgün.
+- Ejderha boss (2 bölge sonu), sancak bayrakları, arka plan atmosferi.
+
+## Kimlik: PUS → AĞIL
+- Kuzu-köyü kimliği (gelistirme.md spec'i): koyun-halk vs Kurt Tarikatı.
+- Görsel katman: ray-box tile derinliği (iso_tile shader), bayrak dalgası, efekt cilası.
+- Zar sistemi (Değirmen → sefer zarı; reroll harcaması; savaş içi HIZ-eşitliği zarı seed'li).
+- Simetrik piece-out yenilgi kuralı + 3x izleme hızı.
+
+## Diyorama düğüm ekranları (MoP "Gray grave" dili)
+- `NodeDiorama` taban sınıfı: iso tile adası + toon prop'lar + yüzen elmas seçenekler + sis.
+- 7 düğüm: Şaman Çadırı, Sahra Revan, Gri Mezar, Nitelik Dükkanı, Yadigar Dükkanı,
+  Darağacı, Meydan (Talim Kumarı).
+- Söylenti sistemi: `data/rumors/*.tres` (6), birim başına 1 zayıf kalıcı pasif.
+- Journey map KARA PUS fog-of-war (halftone dither shader, katman bazlı açılım).
