@@ -79,7 +79,7 @@ func _setup_grain() -> void:
 			or "--garrison" in args or "--runend" in args \
 			or "--saman" in args or "--revir" in args or "--mezar" in args \
 			or "--nitelik" in args or "--yadigar" in args or "--daragaci" in args \
-			or "--meydan" in args or "--olay" in args:
+			or "--meydan" in args or "--olay" in args or "--hub" in args:
 		GameState.start_new_run()
 		for arg in args:
 			if arg.begins_with("--enc="):
@@ -122,6 +122,8 @@ func _setup_grain() -> void:
 		elif "--meydan" in args:
 			_node_type = &"meydan"
 			_show(_make_closable(SaloonScreen.new()))
+		elif "--hub" in args:
+			_show_hub()
 		elif "--olay" in args:
 			var mp := MapScreen.new()
 			_show(mp)
@@ -140,9 +142,7 @@ func _setup_grain() -> void:
 ## Başlangıç menüsü → Yeni Sefer / Devam / Garnizon
 func _show_menu() -> void:
 	var m := MainMenuScreen.new()
-	m.new_run.connect(func() -> void:
-		GameState.start_new_run()
-		_show_map())
+	m.new_run.connect(_show_hub)
 	m.continue_run.connect(func() -> void:
 		if not GameState.load_run():
 			GameState.start_new_run()
@@ -152,6 +152,19 @@ func _show_menu() -> void:
 		g.closed.connect(_show_menu)
 		_show(g))
 	_show(m)
+
+## Ağıl Meydanı (gelistirme §2): sefer öncesi hub — run BURADA başlar (Sefere Çık)
+func _show_hub() -> void:
+	var h := HubScreen.new()
+	h.depart.connect(func() -> void:
+		GameState.start_new_run()
+		_show_map())
+	h.open_garrison.connect(func() -> void:
+		var g := GarrisonScreen.new()
+		g.closed.connect(_show_hub)
+		_show(g))
+	h.back.connect(_show_menu)
+	_show(h)
 
 func _save() -> void:
 	GameState.save_run()
@@ -241,9 +254,7 @@ func _end_run(victory: bool) -> void:
 func _show_run_end() -> void:
 	var rs := RunEndScreen.new()
 	rs.setup(_end_victory, _end_layers, _end_earned)
-	rs.new_run.connect(func() -> void:
-		GameState.start_new_run()
-		_show_map())
+	rs.new_run.connect(_show_hub)   # sefer sonu → meydan (Kalıntı harca, sonra çık)
 	rs.open_garrison.connect(func() -> void:
 		var gs := GarrisonScreen.new()
 		gs.closed.connect(_show_run_end)   # Garnizon'dan sefer-sonu'na dön

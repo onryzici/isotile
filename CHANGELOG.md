@@ -86,3 +86,13 @@
   Darağacı, Meydan (Talim Kumarı).
 - Söylenti sistemi: `data/rumors/*.tres` (6), birim başına 1 zayıf kalıcı pasif.
 - Journey map KARA PUS fog-of-war (halftone dither shader, katman bazlı açılım).
+
+## Ekran katmanı: Kart Olayı + Ağıl Meydanı (2026-07-10)
+- Kart Olayı fiziksel kart (gelistirme §15.5): yırtık kenarlı parşömen, art paneli,
+  ödül ikonlu seçenekler, halftone karartma, flip-in tween. Debug: `--olay`.
+- Ağıl Meydanı hub'ı (gelistirme §2): NodeDiorama üstünde meydan adası — şenlik
+  ateşi (SEFERE ÇIK), garnizon çadırı, kilitli Lonca/Arşiv plakaları, sürü kuzuları.
+  Menü "Yeni Sefer" → Meydan; run Sefere Çık ile başlar; sefer sonu Meydan'a döner.
+  Debug: `--hub`.
+- NodeDiorama: `add_campfire` (taş halka + kütük + kor + kıvılcım + titrek ışık),
+  `force_home_biome` (hub her zaman yeşil yuva seti).

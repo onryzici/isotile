@@ -235,6 +235,13 @@ alt ödül şeridi. Yeni hizmet düğümü eklerken NodeDiorama'dan türet.
 > **Kitapçı** (item satışı) BEKLEMEDE: item sistemi kodda yok (bkz. §7). Campsite/Kaynak
 > göreviyle birlikte gelecek.
 
+**Sefer dışı diyoramalar:**
+- **Ağıl Meydanı** (`hub_screen.gd`, debug `--hub`) — sefer öncesi hub (gelistirme §2).
+  Menüde "Yeni Sefer" buraya gelir; run **Sefere Çık** elmasıyla başlar. Ateş = Sefere Çık,
+  çadır = Garnizon, Lonca/Arşiv kilitli. Sefer sonu ekranı da buraya döner.
+- **Kart Olayı** (`event_card.gd`, debug `--olay`) — fiziksel yırtık-kenar kart (gelistirme
+  §15.5): art paneli placeholder, ödül ikonlu seçenekler, halftone karartma, flip-in.
+
 > Haritada yerleri: `encounters.gd MAP_TEMPLATE` — bölge başına 1 şaman, 1 revir, 1 mezar
 > (elit'in alternatifi). İkonlar: `assets/icons/shaman.svg` (göz) / `medic.svg` (artı) /
 > `grave.svg` (mezar taşı).
@@ -249,7 +256,7 @@ buralara vakit harcama — önce sistem gerekiyor.
 | Sistem | Durum |
 |---|---|
 | **Item sistemi + Kitapçı düğümü** | Kod yok — gelistirme §5. Campsite/Kaynak göreviyle birlikte gelecek |
-| **Ana Hub "Ağıl Meydanı"** (gelistirme §2) | `main_menu_screen.gd` düz buton menüsü; diyorama hub değil |
+| **Lonca / Arşiv / Onur Salonu / Contract** (gelistirme §2) | Ağıl Meydanı'nda kilitli elmas plakalar var; arkasında sistem yok |
 | **Campsite diyoraması + Kaynak parası** (gelistirme §12) | Garnizon 84 satırlık düz menü; meta para **Kalıntı** (spec'teki "Kaynak/Anı" değil) |
 | **Tutorial** (gelistirme §3) | Yok — tek iz "Nasıl Oynanır" modalı |
 | **Contract / Ordeal** (gelistirme §2/§12) | Yok |

@@ -238,10 +238,13 @@ func cell_point(c: Vector2i, lift := 0.0) -> Vector3:
 	var b := cell_world(c)
 	return Vector3(b.x, cell_top(c) + lift, b.z)
 
-## Bioma: 1. bölge (Pus Ormanı) yeşil set, 2. bölge taş set (board_view ile aynı kural)
+## Bioma: 1. bölge (Pus Ormanı) yeşil set, 2. bölge taş set (board_view ile aynı kural).
+## force_home_biome: run dışı ekranlar (Ağıl Meydanı) her zaman yeşil yuva seti kullanır.
+var force_home_biome := false
+
 func _tile_tex_for(c: Vector2i) -> Texture2D:
 	var hash_v := absi((c.x * 73856093) ^ (c.y * 19349663) ^ 0x5f3759df)
-	if GameState.layer_index < 6:
+	if force_home_biome or GameState.layer_index < 6:
 		return YESIL_B_TEX if (hash_v % 100) < 30 else YESIL_A_TEX
 	return TILE_B_TEX if (hash_v % 100) < 30 else TILE_A_TEX
 
@@ -489,6 +492,104 @@ func add_omni(c: Vector2i, color: Color, energy := 2.2, lift := 0.8) -> OmniLigh
 	l.position = cell_point(c, lift)
 	add_child(l)
 	return l
+
+## Şenlik ateşi (gelistirme §15.6): taş halka + çapraz kütükler + emissive kor
+## çekirdeği + yükselen kıvılcımlar + titreşen sıcak ışık. Alev sprite'ı bilinçli
+## yok — ateş sanatı WIP, prosedürel alev istenmiyor; kor + glow dili yeter.
+func add_campfire(c: Vector2i) -> Node3D:
+	var grp := Node3D.new()
+	grp.position = cell_point(c)
+	add_child(grp)
+	# taş halka
+	for i in 6:
+		var st := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.16, 0.11, 0.13)
+		st.mesh = bm
+		var ang := TAU * float(i) / 6.0
+		st.position = Vector3(cos(ang) * 0.34, 0.05, sin(ang) * 0.34)
+		st.rotation_degrees.y = rad_to_deg(-ang) + float((i * 53) % 25)
+		st.material_override = _toon_mat(Color(0.38, 0.38, 0.42), Color(0.16, 0.16, 0.18))
+		grp.add_child(st)
+	# çapraz kütükler
+	for i in 3:
+		var log_m := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.045
+		cm.bottom_radius = 0.045
+		cm.height = 0.5
+		log_m.mesh = cm
+		log_m.material_override = _toon_mat(Color(0.30, 0.20, 0.12), Color(0.12, 0.08, 0.05))
+		log_m.rotation_degrees = Vector3(64.0, float(i) * 120.0, 0.0)
+		log_m.position.y = 0.13
+		grp.add_child(log_m)
+	# kor çekirdeği (emissive — glow AÇIK olduğundan parlar)
+	var core := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 0.11
+	sm.height = 0.16
+	core.mesh = sm
+	var em := StandardMaterial3D.new()
+	em.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	em.albedo_color = Color(1.0, 0.55, 0.18)
+	em.emission_enabled = true
+	em.emission = Color(1.0, 0.45, 0.12)
+	em.emission_energy_multiplier = 2.4
+	core.material_override = em
+	core.position.y = 0.12
+	grp.add_child(core)
+	# yükselen kıvılcım korları
+	var p := GPUParticles3D.new()
+	p.amount = 26
+	p.lifetime = 1.7
+	p.preprocess = 2.0
+	p.randomness = 1.0
+	p.local_coords = false
+	var pm := ParticleProcessMaterial.new()
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	pm.emission_sphere_radius = 0.09
+	pm.direction = Vector3(0, 1, 0)
+	pm.spread = 14.0
+	pm.gravity = Vector3(0, 0.55, 0)
+	pm.initial_velocity_min = 0.25
+	pm.initial_velocity_max = 0.8
+	pm.scale_min = 0.35
+	pm.scale_max = 0.8
+	pm.turbulence_enabled = true
+	pm.turbulence_noise_strength = 0.5
+	pm.color = Color(1.0, 0.62, 0.2, 0.85)
+	var curve := Curve.new()
+	curve.add_point(Vector2(0.0, 1.0))
+	curve.add_point(Vector2(0.7, 0.8))
+	curve.add_point(Vector2(1.0, 0.0))
+	var ct := CurveTexture.new()
+	ct.curve = curve
+	pm.alpha_curve = ct
+	p.process_material = pm
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.05, 0.05)
+	var dm := StandardMaterial3D.new()
+	dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	dm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	dm.albedo_texture = SPARK
+	dm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	dm.vertex_color_use_as_albedo = true
+	quad.material = dm
+	p.draw_pass_1 = quad
+	p.position = Vector3(0, 0.18, 0)
+	grp.add_child(p)
+	# titreşen sıcak ışık (canlı ateş hissi)
+	var l := OmniLight3D.new()
+	l.light_color = Color(1.0, 0.62, 0.25)
+	l.light_energy = 2.6
+	l.omni_range = 3.6
+	l.position.y = 0.75
+	grp.add_child(l)
+	var tw := l.create_tween().set_loops()
+	tw.tween_property(l, "light_energy", 3.3, 0.55).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(l, "light_energy", 2.4, 0.7).set_trans(Tween.TRANS_SINE)
+	return grp
 
 # ------------------------------------------------------------------ UI katmanı
 
