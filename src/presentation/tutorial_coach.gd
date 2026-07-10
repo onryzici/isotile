@@ -37,25 +37,30 @@ func _ready() -> void:
 	_dim_mat.set_shader_parameter("screen_size", get_viewport_rect().size)
 	_dim.material = _dim_mat
 	add_child(_dim)
-	# yazı balonu (ilgili bölgenin yanına konumlanır)
+	# Yazı balonu — DİKKAT: koç CanvasLayer'a doğrudan ekli olduğundan tema
+	# MİRAS ALMAZ; font/stil açıkça verilir (stok Godot fontu = "amatör" hissi).
+	theme = UITheme.make()
 	_panel = PanelContainer.new()
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.06, 0.055, 0.09, 0.96)
-	sb.border_color = Color(0.85, 0.65, 0.3)
+	sb.bg_color = Color(0.055, 0.05, 0.085, 0.9)
+	sb.border_color = UITheme.BORDER
 	sb.set_border_width_all(1)
-	sb.set_corner_radius_all(3)
-	sb.content_margin_left = 18
-	sb.content_margin_right = 18
-	sb.content_margin_top = 8
-	sb.content_margin_bottom = 8
+	sb.set_corner_radius_all(2)
+	sb.content_margin_left = 20
+	sb.content_margin_right = 20
+	sb.content_margin_top = 9
+	sb.content_margin_bottom = 9
+	sb.shadow_color = Color(0, 0, 0, 0.55)
+	sb.shadow_size = 10
 	_panel.add_theme_stylebox_override("panel", sb)
 	add_child(_panel)
 	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 4)
+	v.add_theme_constant_override("separation", 3)
 	_panel.add_child(v)
 	_label = Label.new()
-	_label.add_theme_font_size_override("font_size", 18)
-	_label.add_theme_color_override("font_color", Color(0.96, 0.9, 0.7))
+	_label.add_theme_font_override("font", UITheme.body_font())
+	_label.add_theme_font_size_override("font_size", 20)
+	_label.add_theme_color_override("font_color", UITheme.TEXT)
 	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(_label)
 	var row := HBoxContainer.new()
@@ -63,12 +68,13 @@ func _ready() -> void:
 	row.add_theme_constant_override("separation", 12)
 	v.add_child(row)
 	_pips = Label.new()
-	_pips.add_theme_font_size_override("font_size", 12)
-	_pips.add_theme_color_override("font_color", Color(0.7, 0.62, 0.45))
+	_pips.add_theme_font_override("font", UITheme.body_font())
+	_pips.add_theme_font_size_override("font_size", 13)
+	_pips.add_theme_color_override("font_color", UITheme.TEXT_DIM)
 	row.add_child(_pips)
 	_btn = Button.new()
 	_btn.focus_mode = Control.FOCUS_NONE
-	_btn.custom_minimum_size = Vector2(90, 30)
+	_btn.custom_minimum_size = Vector2(84, 28)
 	_btn.add_theme_font_size_override("font_size", 15)
 	_btn.pressed.connect(func() -> void: _gate(&"btn"))
 	row.add_child(_btn)
@@ -146,10 +152,7 @@ func _show_step() -> void:
 	_btn.visible = s.has("btn")
 	if _btn.visible:
 		_btn.text = s["btn"]
-	var pip := ""
-	for i in _steps.size():
-		pip += "●" if i <= _step else "○"
-	_pips.text = pip
+	_pips.text = "%d / %d" % [_step + 1, _steps.size()]
 	# yumuşak geçiş: balon kısa fade
 	_panel.modulate.a = 0.0
 	create_tween().tween_property(_panel, "modulate:a", 1.0, 0.2)
@@ -163,6 +166,12 @@ func _process(_dt: float) -> void:
 	var s: Dictionary = _steps[_step]
 	var r: Rect2 = (s["rect"] as Callable).call()
 	var vp := get_viewport_rect().size
+	# CanvasLayer altındaki Control FULL_RECT anchor'a rağmen 0x0 kalabiliyor
+	# (EventCard'daki sınıfla aynı tuzak) → boyutu her kare elle ver
+	position = Vector2.ZERO
+	size = vp
+	_dim.position = Vector2.ZERO
+	_dim.size = vp
 	_dim_mat.set_shader_parameter("screen_size", vp)
 	if s.get("nodim", false) or r.size.x <= 0.0:
 		# hedefsiz adım ("izle"): karartma yok, yazı alt-ortada süzülür

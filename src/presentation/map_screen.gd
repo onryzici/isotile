@@ -342,7 +342,9 @@ func _add_node(node: Dictionary, pos: Vector2, state: int) -> void:
 		btn.tooltip_text = TYPE_DESC.get(type, "")
 		btn.pressed.connect(_on_node_pressed.bind(node))
 		_root.add_child(btn)
-		var tw := create_tween().set_loops()
+		# tween disc'e BAĞLI olmalı: harita yeniden kurulunca disc silinir; MapScreen'e
+		# bağlı döngü hedefsiz kalıp "Infinite loop detected" hatası yağdırıyordu
+		var tw := disc.create_tween().set_loops()
 		tw.tween_property(disc, "scale", Vector2(1.1, 1.1), 0.6).set_trans(Tween.TRANS_SINE)
 		tw.tween_property(disc, "scale", Vector2.ONE, 0.6).set_trans(Tween.TRANS_SINE)
 		disc.pivot_offset = disc.disc_center
