@@ -22,6 +22,8 @@ const ITEM_CAP := 3
 var ordeal := 0                           # Çile seviyesi (0 = normal sefer; gelistirme §12 Ordeal)
 const ORDEAL_MAX := 3
 var meta_ordeal_best := -1                # en yüksek TAMAMLANAN çile (−1 = ilk zafer henüz yok)
+var meta_intro_seen := false              # cold open bir kez zorlanır (§3.1)
+var meta_tutorial_done := false           # ilk savaş koçu bir kez zorlanır (§3.3)
 
 ## Seçilebilir en yüksek çile: tamamlananın bir üstü (ilk zafer çile 1'i açar)
 func ordeal_cap() -> int:
@@ -61,7 +63,8 @@ func save_meta() -> void:
 	if f:
 		f.store_string(JSON.stringify({"kalinti": meta_kalinti,
 			"gold_lv": meta_gold_lv, "flag_lv": meta_flag_lv, "mevzi_lv": meta_mevzi_lv,
-			"degirmen_lv": meta_degirmen_lv, "ordeal_best": meta_ordeal_best}))
+			"degirmen_lv": meta_degirmen_lv, "ordeal_best": meta_ordeal_best,
+			"intro_seen": meta_intro_seen, "tutorial_done": meta_tutorial_done}))
 
 func load_meta() -> void:
 	if not FileAccess.file_exists(META_PATH):
@@ -78,6 +81,8 @@ func load_meta() -> void:
 	meta_mevzi_lv = int(d.get("mevzi_lv", 0))
 	meta_degirmen_lv = int(d.get("degirmen_lv", 0))
 	meta_ordeal_best = int(d.get("ordeal_best", -1))
+	meta_intro_seen = bool(d.get("intro_seen", false))
+	meta_tutorial_done = bool(d.get("tutorial_done", false))
 
 ## Sefer sonu meta kaynak ver (geçilen katmana göre) + kalıcı kaydet
 func award_meta(layers_cleared: int, won: bool) -> int:

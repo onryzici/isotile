@@ -292,6 +292,17 @@ güncellenir → bir üst çile açılır. Kayıtta run `ordeal`, meta `ordeal_b
 
 ---
 
+## 6e. İLK OYUN AKIŞI (gelistirme §3) — çalışıyor
+
+- **Cold open** (`intro_screen.gd`, debug `--intro`): ilk açılışta anlatı kartı (EventCard
+  dili) — Kara Pus / Kurt Tarikatı / "son sürüyü topla". `meta_intro_seen` ile bir kez.
+- **Savaş koçu** (`tutorial_coach.gd`): ilk savaşta üstte 3 adımlı gated şerit
+  (kart seç → tile'a koy → SAVAŞ) + adım pipleri. Tamamlanınca `meta_tutorial_done`
+  (garrison.json). Koç varken "Nasıl Oynanır" otomatik modalı bastırılır ("?" hâlâ açar).
+  `--autobattle` koşuları koçu atlar (CI tutorial'ı sessizce bitirmesin).
+
+---
+
 ## 7. TASARIMDA VAR, KODDA YOK
 
 `CLAUDE.md` bunları detaylıca tarif ediyor ama **hiç yazılmadılar.** İçerik ayarlarken
@@ -301,7 +312,7 @@ buralara vakit harcama — önce sistem gerekiyor.
 |---|---|
 | **Lonca / Arşiv / Onur Salonu / Contract** (gelistirme §2) | Ağıl Meydanı'nda kilitli elmas plakalar var; arkasında sistem yok |
 | **Kaynak parası + tesis çeşitliliği** (gelistirme §12) | Garnizon diyoraması 4 tesisli; spec 6-8 tesis + ayrı "Kaynak" parası istiyor (kodda tek meta para: **Kalıntı**) |
-| **Tutorial** (gelistirme §3) | Yok — tek iz "Nasıl Oynanır" modalı |
+| **Tutorial adım D-E** (gelistirme §3.3) | Cold open + 3 adımlı savaş koçu var (§6e); "yeni tur eylemleri / zafer-ödül tanıtımı" adımları ve harita tooltip turu yok |
 | **Contract / Sözleşme** (gelistirme §2) | Yok |
 | **Çile 4-7** (gelistirme §12: MoP 7 Ordeal) | Kodda 3 seviye var (§6d); 4+ tanımsız |
 | **Ün (Reputation)** | Hiçbir yerde kazanılmıyor/harcanmıyor |

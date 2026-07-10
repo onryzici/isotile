@@ -111,3 +111,6 @@
   [düşman şifacısı], Kadim Kurt) + 4 encounter (orta4/orta5/elit3/boss3, sancak
   30/32/40/125, boss3 +1 SALDIRI). Bölge adı/bioma seçimi Encounters.region_of'a
   taşındı.
+- İlk oyun akışı (gelistirme §3): cold open anlatı kartı (ilk açılış, `--intro`) +
+  ilk savaşta 3 adımlı gated öğretici şeridi (kart seç → yerleştir → SAVAŞ; adım
+  pipleri, tamamlanınca meta'ya yazılır, "Nasıl Oynanır" modalını bastırır).

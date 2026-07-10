@@ -417,6 +417,8 @@ func _make_flag_view(coord: Vector2i, side_blue: bool, hp: int) -> PieceView:
 
 func _setup_ui() -> void:
 	ui = DeploymentUI.new()
+	if not GameState.meta_tutorial_done:
+		DeploymentUI._howto_shown = true   # koç varken otomatik modal açılmasın
 	add_child(ui)
 	ui.build(_squad)
 	ui.set_mevzi(deployment.mevzi)
@@ -428,6 +430,13 @@ func _setup_ui() -> void:
 	ui.battle_pressed.connect(_on_end_turn)
 	ui.commander_pressed.connect(_on_commander)
 	ui.restart_pressed.connect(func(): EventBus.return_to_map.emit(_last_won))
+	# İlk savaş öğreticisi (gelistirme §3.3): gated adım şeridi. Otomatik test
+	# koşularında (--autobattle) tutorial'ı sessizce tamamlamış saymamak için atla.
+	if not GameState.meta_tutorial_done \
+			and not OS.get_cmdline_user_args().has("--autobattle"):
+		var coach := TutorialCoach.new()
+		ui.add_child(coach)
+		coach.attach(ui)
 	_hand = HandCursor.new()
 	add_child(_hand)
 

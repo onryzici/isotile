@@ -139,8 +139,17 @@ func _setup_grain() -> void:
 		_maybe_autoshot()
 		return
 
-	# Normal: başlangıç menüsü
-	_show_menu()
+	# Normal akış: ilk açılışta cold open (§3.1), sonra başlangıç menüsü
+	GameState.load_meta()
+	if "--intro" in args or not GameState.meta_intro_seen:
+		var intro := IntroScreen.new()
+		intro.done.connect(func() -> void:
+			GameState.meta_intro_seen = true
+			GameState.save_meta()
+			_show_menu())
+		_show(intro)
+	else:
+		_show_menu()
 	_maybe_autoshot()
 
 ## Başlangıç menüsü → Yeni Sefer / Devam / Garnizon
