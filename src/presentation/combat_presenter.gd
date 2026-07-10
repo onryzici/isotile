@@ -107,7 +107,7 @@ func _play_event(e: Dictionary) -> void:
 		"MOVE":
 			var view: PieceView = _views.get(e["unit_id"])
 			if view:
-				_dust(view.position)   # adım tozu
+				pass   # adım tozu partikülü kaldırıldı (Onur: prosedürel partikül yok)
 				var base: Vector3 = _board.coord_to_world(e["to"])
 				var target := Vector3(base.x, _board.tile_top_y(e["to"]), base.z)
 				var tw := view.move_anim(target, 0.3 / speed)
@@ -155,9 +155,6 @@ func _play_event(e: Dictionary) -> void:
 				_board.clear_terrain(e["coord"])   # diken tükendi (§7)
 			await _delay(0.25)
 		"TRAIT_PROC":
-			var view: PieceView = _views.get(e["unit_id"])
-			if view:
-				_impact(view.position + Vector3(0, 0.4, 0), COLOR_TRAIT, 0.6)
 			log_line.emit("★ %s" % e["ad"])   # sade durum bilgisi (Savaş Kaydı)
 			await _delay(0.16)
 		"STUN_SKIP":
@@ -170,7 +167,6 @@ func _play_event(e: Dictionary) -> void:
 			log_line.emit("☠ %s düştü" % _info.get(e["unit_id"], {}).get("ad", "?"))
 			if view:
 				AudioDirector.play_sfx(&"death", 0.07)
-				_impact(view.position, Color(0.52, 0.48, 0.54), 1.5)   # toz bulutu
 				var tw := view.die_anim(0.35 / speed)
 				await tw.finished
 				view.visible = false
@@ -204,9 +200,8 @@ func _play_attack(e: Dictionary) -> void:
 		dst.zap_flash(0.45 / speed)
 		_spawn_number(dst.position, "-%d" % final, Color(0.7, 0.88, 1.0), payoff)
 	else:
-		# renk: ılık turuncu → sıcak sarı-beyaz (heat arttıkça)
-		var hot := Color(1.0, 0.70, 0.34).lerp(Color(1.0, 0.96, 0.66), heat)
-		_impact(dst.position, hot, 1.0 + heat * 1.9)
+		# Parıltı/yıldız patlaması YOK (Onur) — hasar hissi: hasar karesi
+		# (varsa), squash, flash, sayı, sarsıntı ve sesle taşınır.
 		dst.squash(0.12 + heat * 0.22, 0.34 / speed)   # darbe ezilmesi (ağır = daha çok)
 		if payoff:
 			# Ağır vuruş: büyük sıcak hasar sayısı + sarsıntı + hitstop (metin çağrısı YOK)

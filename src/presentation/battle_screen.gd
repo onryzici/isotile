@@ -71,7 +71,7 @@ var _telegraph: Dictionary = {}        # Vector2i -> Color (düşman niyeti §11
 func _ready() -> void:
 	_load_encounter()
 	_setup_environment()
-	_setup_ambient_particles()
+	# ambient toz zerreleri kaldırıldı (Onur: prosedürel partikül yok)
 	_setup_lights()
 	_setup_camera()
 	_setup_board()
@@ -841,7 +841,7 @@ func _finish_battle() -> void:
 ## --autobattle: dizip turları otomatik oyna (görsel doğrulama)
 func _debug_autobattle() -> void:
 	var spots: Array[Vector2i] = [Vector2i(1, 1), Vector2i(2, 1), Vector2i(4, 1), Vector2i(0, 1)]
-	for i in _squad.size():
+	for i in mini(_squad.size(), spots.size()):
 		_selected = i
 		_try_place(spots[i])
 	await get_tree().create_timer(0.4).timeout

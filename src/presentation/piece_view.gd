@@ -24,6 +24,9 @@ const SPRITE_SCALE := {
 var _visual: Node3D          # MeshInstance3D (kapsül) veya Sprite3D
 var _visual_h := 0.9         # görsel yükseklik (etiket konumu için)
 var _is_sprite := false
+var _base_tex: Texture2D    # sprite modunda asıl kare
+var _hurt_tex: Texture2D    # <mesh>_hasar.png varsa: vuruş anında gösterilen kare
+var _hurt_token := 0        # üst üste vuruşlarda erken geri dönmeyi önler
 var _mat: ShaderMaterial     # kapsül modunda flash için
 var _badge_vp: SubViewport   # stat rozetlerinin çizildiği viewport
 var _badges: StatBadges
@@ -168,6 +171,11 @@ func _setup_sprite(path: String, scale_mul: float) -> void:
 	_visual = sprite
 	_visual_h = world_h
 	_is_sprite = true
+	# Hasar karesi (Onur art'ı): aynı klasörde <ad>_hasar.png varsa vuruşta o gelir
+	_base_tex = tex
+	var hurt_path := path.get_basename() + "_hasar.png"
+	if ResourceLoader.exists(hurt_path):
+		_hurt_tex = load(hurt_path)
 
 ## Key ışığın (−55°, −35°) yere düşürdüğü gölgenin yatay yönü
 const CAST_DIR := Vector3(0.574, 0.0, -0.819)
@@ -266,9 +274,28 @@ func attack_lunge(toward: Vector3, dur: float) -> Tween:
 
 ## Hasar aldı: kapsülde kırmızı emissive parlama, sprite'ta kırmızı modulate;
 ## her ikisinde ufak sarsıntı
+## Anlık hasar karesi: dokuyu <ad>_hasar.png ile değiştir, süre sonunda geri al.
+## sprite_border shader'ı kendi "tex" uniform'undan okuduğu için o da güncellenir.
+func _show_hurt_frame(sprite: Sprite3D, dur: float) -> void:
+	if _hurt_tex == null:
+		return
+	_hurt_token += 1
+	var tok := _hurt_token
+	sprite.texture = _hurt_tex
+	var m := sprite.material_override as ShaderMaterial
+	if m:
+		m.set_shader_parameter("tex", _hurt_tex)
+	get_tree().create_timer(maxf(0.24, dur)).timeout.connect(func() -> void:
+		if tok != _hurt_token or not is_instance_valid(sprite):
+			return   # bu sırada yeni vuruş geldi — onun zamanlayıcısı geri alacak
+		sprite.texture = _base_tex
+		if m:
+			m.set_shader_parameter("tex", _base_tex))
+
 func hit_flash(dur: float) -> void:
 	if _is_sprite:
 		var sprite := _visual as Sprite3D
+		_show_hurt_frame(sprite, dur)
 		sprite.modulate = Color(1.0, 0.35, 0.3)
 		var tw := create_tween()
 		tw.tween_property(sprite, "modulate", Color.WHITE, dur)
@@ -287,6 +314,7 @@ func hit_flash(dur: float) -> void:
 func zap_flash(dur: float) -> void:
 	if _is_sprite:
 		var sprite := _visual as Sprite3D
+		_show_hurt_frame(sprite, dur)
 		var tw := create_tween()
 		for c in [Color(0.7, 0.9, 1.4), Color.WHITE, Color(0.6, 0.85, 1.4), Color.WHITE]:
 			tw.tween_property(sprite, "modulate", c, dur * 0.18)
