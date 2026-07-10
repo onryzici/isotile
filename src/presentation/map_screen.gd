@@ -29,15 +29,28 @@ const IC_SKULL := preload("res://assets/icons/skull.svg")
 const IC_GOLD := preload("res://assets/icons/gold.svg")
 const IC_BOOK := preload("res://assets/icons/book.svg")
 const IC_PACK := preload("res://assets/icons/pack.svg")
+const IC_SHAMAN := preload("res://assets/icons/shaman.svg")
+const IC_MEDIC := preload("res://assets/icons/medic.svg")
+const IC_GRAVE := preload("res://assets/icons/grave.svg")
+const IC_TRAIT := preload("res://assets/icons/trait.svg")
+const IC_GEM := preload("res://assets/icons/gem.svg")
+const IC_GALLOWS := preload("res://assets/icons/gallows.svg")
 
 const TYPE_ICON := {
 	&"savas": IC_SKULL, &"elit": IC_SKULL, &"boss": IC_SKULL,
 	&"dukkan": IC_GOLD, &"olay": IC_BOOK,
+	&"saman": IC_SHAMAN, &"revir": IC_MEDIC, &"mezar": IC_GRAVE,
+	&"nitelik": IC_TRAIT, &"yadigar": IC_GEM, &"daragaci": IC_GALLOWS,
+	&"meydan": preload("res://assets/icons/dice.svg"),
 }
 const TYPE_COL := {
 	&"savas": Color(0.82, 0.32, 0.27), &"elit": Color(0.92, 0.56, 0.22),
 	&"boss": Color(0.70, 0.38, 0.80), &"dukkan": Color(0.86, 0.72, 0.36),
 	&"olay": Color(0.48, 0.64, 0.88),
+	&"saman": Color(0.42, 0.72, 0.52), &"revir": Color(0.55, 0.82, 0.78),
+	&"mezar": Color(0.56, 0.56, 0.62),
+	&"nitelik": Color(0.65, 0.72, 0.35), &"yadigar": Color(0.88, 0.78, 0.42),
+	&"daragaci": Color(0.62, 0.30, 0.26), &"meydan": Color(0.84, 0.52, 0.6),
 }
 const REGION_NAMES := ["I · PUS ORMANI", "II · KEMİK BATAKLIĞI"]
 
@@ -156,7 +169,11 @@ func _build() -> void:
 				state = 2
 			_add_node(entry["node"], pos, state)
 
-	# Pus vinyet (düğümlerin üstünde ama HUD altında)
+	# KARA PUS fog-of-war (§4/§15.3): keşfedilmemiş katmanlar halftone pusla örtülü.
+	# Düğümlerin ÜSTÜNDE (uzak madalyonları gizler) ama HUD'un altında.
+	_build_fog_of_war(layout)
+
+	# Pus vinyet (atmosfer, kenarlar)
 	var fog := ColorRect.new()
 	fog.set_anchors_preset(Control.PRESET_FULL_RECT)
 	fog.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -166,6 +183,50 @@ func _build() -> void:
 	_root.add_child(fog)
 
 	_build_hud()
+
+## Fog-of-war açıklık noktaları (gelistirme.md §4): gezilen katmanlar açık, mevcut
+## katman geniş açık (yeni açılış animasyonlu), SONRAKİ katman dar önizleme (noktalı
+## sisin içinden seçilir), son katman (boss) hedef olarak hayal meyal görünür.
+func _build_fog_of_war(layout: Array) -> void:
+	var pts := PackedVector4Array()
+	var li := GameState.layer_index
+	var last := layout.size() - 1
+	for i in layout.size():
+		var radius := 0.0
+		var animated := 0.0
+		if i < li:
+			radius = 185.0
+		elif i == li:
+			radius = 240.0
+			animated = 1.0
+		elif i == li + 1:
+			radius = 100.0
+			animated = 1.0
+		elif i == last:
+			radius = 70.0     # boss hedefi: pusun içinde belli belirsiz
+		else:
+			continue
+		for e: Dictionary in layout[i]:
+			var p: Vector2 = _iso(e["cell"].x, e["cell"].y) + Vector2(0, -NODE_LIFT * 0.5)
+			pts.append(Vector4(p.x, p.y, radius, animated))
+		if pts.size() >= 48:
+			break
+	var rect := ColorRect.new()
+	rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var mat := ShaderMaterial.new()
+	mat.shader = preload("res://shaders/fog_of_war.gdshader")
+	mat.set_shader_parameter("points", pts)
+	mat.set_shader_parameter("point_count", pts.size())
+	mat.set_shader_parameter("screen_size", get_viewport().get_visible_rect().size)
+	mat.set_shader_parameter("reveal_t", 0.0)
+	rect.material = mat
+	_root.add_child(rect)
+	# Pus çekilme animasyonu: yeni açılan bölgeler sıfırdan büyür
+	var tw := rect.create_tween()
+	tw.tween_method(func(v: float) -> void:
+		mat.set_shader_parameter("reveal_t", v), 0.0, 1.0, 1.1) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
 func _draw_map() -> void:
 	# ── Arazi küpleri ──
@@ -298,7 +359,9 @@ func _build_hud() -> void:
 	bar.add_child(title)
 
 	var left := Label.new()
-	left.text = "⛁ %d      ⚑ %d birim" % [GameState.gold, GameState.squad.size()]
+	left.text = "⛁ %d      ⚑ Sancak %d/%d      %d birim      Zar %d" % [
+		GameState.gold, GameState.player_flag_hp, GameState.flag_cap(),
+		GameState.squad.size(), GameState.zar]
 	left.add_theme_font_size_override("font_size", 18)
 	left.add_theme_color_override("font_color", Color(0.82, 0.76, 0.6))
 	left.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE, Control.PRESET_MODE_MINSIZE)
@@ -407,7 +470,7 @@ func _show_event() -> void:
 		vbox.add_child(b)
 
 func _apply_event(etki: String) -> void:
-	var cap := GameState.PLAYER_FLAG_MAX + GameState.meta_flag_lv * 5
+	var cap := GameState.flag_cap()
 	match etki:
 		"recruit_mizrak":
 			GameState.gold -= 5

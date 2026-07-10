@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="TraitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/logic/trait_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"eski_yara"
+ad = "Eski Yara"
+aciklama = "Her zaferde eski yarası kaşınırmış. Öldürünce +0.1 Kat (savaş boyu)."
+tetik = 2
+kalici_kat = 0.1

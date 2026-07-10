@@ -76,7 +76,10 @@ func _setup_grain() -> void:
 	# Debug ekranları (test) — hep taze run
 	if enc_override or "--merge" in args or "--autobattle" in args \
 			or "--shop" in args or "--reward" in args or "--map" in args \
-			or "--garrison" in args or "--runend" in args:
+			or "--garrison" in args or "--runend" in args \
+			or "--saman" in args or "--revir" in args or "--mezar" in args \
+			or "--nitelik" in args or "--yadigar" in args or "--daragaci" in args \
+			or "--meydan" in args:
 		GameState.start_new_run()
 		for arg in args:
 			if arg.begins_with("--enc="):
@@ -96,6 +99,29 @@ func _setup_grain() -> void:
 		elif "--runend" in args:
 			_end_layers = 3
 			_show_run_end()
+		elif "--saman" in args:
+			_node_type = &"saman"
+			_show(_make_closable(ShamanScreen.new()))
+		elif "--revir" in args:
+			_node_type = &"revir"
+			GameState.player_flag_hp = 18          # onarım farkı görünsün
+			GameState.squad_hp[0] = 2              # yaralı birim örneği
+			_show(_make_closable(InfirmaryScreen.new()))
+		elif "--mezar" in args:
+			_node_type = &"mezar"
+			_show(_make_closable(GraveScreen.new()))
+		elif "--nitelik" in args:
+			_node_type = &"nitelik"
+			_show(_make_closable(TraitShopScreen.new()))
+		elif "--yadigar" in args:
+			_node_type = &"yadigar"
+			_show(_make_closable(RelicChoiceScreen.new()))
+		elif "--daragaci" in args:
+			_node_type = &"daragaci"
+			_show(_make_closable(GallowsScreen.new()))
+		elif "--meydan" in args:
+			_node_type = &"meydan"
+			_show(_make_closable(SaloonScreen.new()))
 		elif "--map" in args:
 			_show_map()
 		else:
@@ -151,8 +177,27 @@ func _on_map_node(node: Dictionary) -> void:
 			_show(BATTLE_SCREEN.instantiate())
 		&"dukkan":
 			_show(_make_shop())
+		&"saman":
+			_show(_make_closable(ShamanScreen.new()))
+		&"revir":
+			_show(_make_closable(InfirmaryScreen.new()))
+		&"mezar":
+			_show(_make_closable(GraveScreen.new()))
+		&"nitelik":
+			_show(_make_closable(TraitShopScreen.new()))
+		&"yadigar":
+			_show(_make_closable(RelicChoiceScreen.new()))
+		&"daragaci":
+			_show(_make_closable(GallowsScreen.new()))
+		&"meydan":
+			_show(_make_closable(SaloonScreen.new()))
 		_:
 			_show_map()
+
+## closed sinyalli tek-servis düğüm ekranı → kapanınca katman ilerler
+func _make_closable(screen: Node) -> Node:
+	screen.closed.connect(_on_return_to_map.bind(true))
+	return screen
 
 ## Düğüm bitti → haritaya dön. Savaş zaferinde önce ÖDÜL ekranı; her ziyaret
 ## katmanı ilerletir (kaybetmek de ilerlemedir §1.5); bayrak düşünce sefer biter.

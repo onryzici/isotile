@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="TraitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/logic/trait_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"pusu_kokusu"
+ad = "Pusu Kokusu"
+aciklama = "Dişlerinde zehir kalıntısı görülmüş. Vuruşta 1 Zehir."
+tetik = 1
+statu = &"zehir"
+statu_deger = 1
+hedef = 1
