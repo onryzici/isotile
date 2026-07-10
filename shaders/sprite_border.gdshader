@@ -10,6 +10,8 @@ uniform float cutoff : hint_range(0.0, 1.0) = 0.5;
 // Anlık hasar efekti: 1 → siyah-beyaz, kırmızı+sarı kanallar parlatılmış
 // (foto B&W'daki reds/yellows artırma — sıcak tonlar bembeyaz patlar)
 uniform float hurt : hint_range(0.0, 1.0) = 0.0;
+// Çarpma anı parlaması: B&W'nin üstüne beyaz itme (ilk karede bembeyaz patlar)
+uniform float hurt_glow : hint_range(0.0, 1.0) = 0.0;
 
 void vertex() {
 	// Billboard (kameraya bak) — Sprite3D.billboard kapalı olmalı.
@@ -24,7 +26,8 @@ void fragment() {
 		discard;
 	}
 	float lum = clamp(c.r * 0.80 + c.g * 0.55 + c.b * 0.08, 0.0, 1.0);
-	c.rgb = mix(c.rgb, vec3(lum), hurt);
+	vec3 bw = clamp(vec3(lum + hurt_glow), 0.0, 1.0);
+	c.rgb = mix(c.rgb, bw, hurt);
 	vec2 texel = 1.0 / vec2(textureSize(tex, 0));
 	// 8 yön × 4 halka — kaynak-texel'de dolgun iç border (oyun zoom'unda görünür)
 	float edge = 0.0;

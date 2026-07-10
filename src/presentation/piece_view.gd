@@ -24,7 +24,7 @@ const SPRITE_SCALE := {
 var _visual: Node3D          # MeshInstance3D (kapsül) veya Sprite3D
 var _visual_h := 0.9         # görsel yükseklik (etiket konumu için)
 var _is_sprite := false
-var _hurt_token := 0        # üst üste vuruşlarda erken geri dönmeyi önler
+var _hurt_tw: Tween         # hasar efekti zinciri (yeni vuruş eskisini keser)
 var _mat: ShaderMaterial     # kapsül modunda flash için
 var _badge_vp: SubViewport   # stat rozetlerinin çizildiği viewport
 var _badges: StatBadges
@@ -267,20 +267,31 @@ func attack_lunge(toward: Vector3, dur: float) -> Tween:
 
 ## Hasar aldı: kapsülde kırmızı emissive parlama, sprite'ta kırmızı modulate;
 ## her ikisinde ufak sarsıntı
-## Anlık hasar efekti (Onur): aynı görsel, siyah-beyaz + kırmızı/sarı parlak
-## (sprite_border shader'ındaki "hurt" uniform'u). Süre sonunda yumuşak geri dönüş.
-func _show_hurt_effect(sprite: Sprite3D, dur: float) -> void:
+## Anlık hasar efekti (Onur): VURUCU geçiş — çarpma anında bembeyaz patlama,
+## hızla B&W'ye iner, kısa tutuş, çıkışta çift kırpmalı (strobe) renk dönüşü.
+func _show_hurt_effect(sprite: Sprite3D, _dur: float) -> void:
 	var m := sprite.material_override as ShaderMaterial
 	if m == null:
 		return
-	_hurt_token += 1
-	var tok := _hurt_token
-	m.set_shader_parameter("hurt", 1.0)
-	get_tree().create_timer(maxf(0.22, dur)).timeout.connect(func() -> void:
-		if tok != _hurt_token or not is_instance_valid(sprite):
-			return   # bu sırada yeni vuruş geldi — onunki geri alacak
-		create_tween().tween_method(func(v: float) -> void:
-			m.set_shader_parameter("hurt", v), 1.0, 0.0, 0.1))
+	if _hurt_tw and _hurt_tw.is_valid():
+		_hurt_tw.kill()
+	var set_h := func(v: float) -> void: m.set_shader_parameter("hurt", v)
+	var set_g := func(v: float) -> void: m.set_shader_parameter("hurt_glow", v)
+	# 1) çarpma karesi: bembeyaz
+	set_h.call(1.0)
+	set_g.call(0.6)
+	_hurt_tw = create_tween()
+	# 2) beyazdan B&W'ye sert iniş
+	_hurt_tw.tween_method(set_g, 0.6, 0.0, 0.07) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	# 3) kısa monokrom tutuş
+	_hurt_tw.tween_interval(0.10)
+	# 4) çıkış strobe'u: renk → tekrar B&W → renk (çift kırpma)
+	_hurt_tw.tween_callback(func() -> void: set_h.call(0.0))
+	_hurt_tw.tween_interval(0.045)
+	_hurt_tw.tween_callback(func() -> void: set_h.call(0.75))
+	_hurt_tw.tween_interval(0.05)
+	_hurt_tw.tween_callback(func() -> void: set_h.call(0.0))
 
 func hit_flash(dur: float) -> void:
 	if _is_sprite:
