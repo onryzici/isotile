@@ -7,6 +7,9 @@ uniform sampler2D tex : source_color, filter_linear;
 uniform vec4 border_color : source_color = vec4(0.0, 0.0, 0.0, 1.0);
 uniform float border_px : hint_range(0.0, 40.0) = 12.0;
 uniform float cutoff : hint_range(0.0, 1.0) = 0.5;
+// Anlık hasar efekti: 1 → siyah-beyaz, kırmızı+sarı kanallar parlatılmış
+// (foto B&W'daki reds/yellows artırma — sıcak tonlar bembeyaz patlar)
+uniform float hurt : hint_range(0.0, 1.0) = 0.0;
 
 void vertex() {
 	// Billboard (kameraya bak) — Sprite3D.billboard kapalı olmalı.
@@ -20,6 +23,8 @@ void fragment() {
 	if (c.a < cutoff) {
 		discard;
 	}
+	float lum = clamp(c.r * 0.80 + c.g * 0.55 + c.b * 0.08, 0.0, 1.0);
+	c.rgb = mix(c.rgb, vec3(lum), hurt);
 	vec2 texel = 1.0 / vec2(textureSize(tex, 0));
 	// 8 yön × 4 halka — kaynak-texel'de dolgun iç border (oyun zoom'unda görünür)
 	float edge = 0.0;
