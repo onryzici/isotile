@@ -241,6 +241,9 @@ alt ödül şeridi. Yeni hizmet düğümü eklerken NodeDiorama'dan türet.
   çadır = Garnizon, Lonca/Arşiv kilitli. Sefer sonu ekranı da buraya döner.
 - **Kart Olayı** (`event_card.gd`, debug `--olay`) — fiziksel yırtık-kenar kart (gelistirme
   §15.5): art paneli placeholder, ödül ikonlu seçenekler, halftone karartma, flip-in.
+- **Garnizon** (`garrison_screen.gd`, debug `--garrison`) — kamp adası diyoraması
+  (gelistirme §12): ateş + 4 tesis prop'u (İkmal/Atölye/Talimhane/dönen Değirmen),
+  tesis elmasları Sv+bedel gösterir, Kalıntı harcanınca kalıcı yükselir.
 
 > Haritada yerleri: `encounters.gd MAP_TEMPLATE` — bölge başına 1 şaman, 1 revir, 1 mezar
 > (elit'in alternatifi). İkonlar: `assets/icons/shaman.svg` (göz) / `medic.svg` (artı) /
@@ -257,7 +260,7 @@ buralara vakit harcama — önce sistem gerekiyor.
 |---|---|
 | **Item sistemi + Kitapçı düğümü** | Kod yok — gelistirme §5. Campsite/Kaynak göreviyle birlikte gelecek |
 | **Lonca / Arşiv / Onur Salonu / Contract** (gelistirme §2) | Ağıl Meydanı'nda kilitli elmas plakalar var; arkasında sistem yok |
-| **Campsite diyoraması + Kaynak parası** (gelistirme §12) | Garnizon 84 satırlık düz menü; meta para **Kalıntı** (spec'teki "Kaynak/Anı" değil) |
+| **Kaynak parası + tesis çeşitliliği** (gelistirme §12) | Garnizon diyoraması 4 tesisli; spec 6-8 tesis + ayrı "Kaynak" parası istiyor (kodda tek meta para: **Kalıntı**) |
 | **Tutorial** (gelistirme §3) | Yok — tek iz "Nasıl Oynanır" modalı |
 | **Contract / Ordeal** (gelistirme §2/§12) | Yok |
 | **Ün (Reputation)** | Hiçbir yerde kazanılmıyor/harcanmıyor |

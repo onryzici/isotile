@@ -96,3 +96,5 @@
   Debug: `--hub`.
 - NodeDiorama: `add_campfire` (taş halka + kütük + kor + kıvılcım + titrek ışık),
   `force_home_biome` (hub her zaman yeşil yuva seti).
+- Garnizon campsite diyoraması: kamp adası + tesis prop'ları (İkmal İstasyonu,
+  Atölye, Talimhane, dönen kanatlı Değirmen) + seviye/bedel elmasları. Debug: `--garrison`.
