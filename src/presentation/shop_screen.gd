@@ -15,6 +15,7 @@ var _stock_relics: Array = []
 var _stock_units: Array = []
 var _bought_relics := {}
 var _bought_units := {}
+var _reroll_btn: Button
 
 func _ready() -> void:
 	_root = Control.new()
@@ -82,11 +83,22 @@ func _build() -> void:
 	actions.add_child(_btn("Bölüğü İyileştir (%d)" % HEAL_COST, func(): _heal()))
 	actions.add_child(_btn("Tabya Birleştir", func(): _open_merge()))
 	actions.add_child(_btn("Birim Sürgün", func(): _open_banish()))
+	_reroll_btn = _btn("", func(): _reroll_stock())
+	actions.add_child(_reroll_btn)
 	var leave := _btn("ÇIK →", func(): closed.emit(); queue_free())
 	leave.custom_minimum_size = Vector2(140, 48)
 	actions.add_child(leave)
 
 	_refresh()
+
+## Zar (§6): 1 zar harca → satılmamış stok yeniden çekilir (şansı zorlama)
+func _reroll_stock() -> void:
+	if not GameState.spend_zar():
+		return
+	_reroll_btn.disabled = true
+	DiceRoll.play(self, 1 + randi() % 6, func() -> void:
+		_roll_stock()
+		_refresh())
 
 func _section(t: String) -> Label:
 	var l := Label.new()
@@ -96,7 +108,10 @@ func _section(t: String) -> Label:
 	return l
 
 func _refresh() -> void:
-	_gold_label.text = "Altın: %d" % GameState.gold
+	_gold_label.text = "Altın: %d  ·  Zar: %d" % [GameState.gold, GameState.zar]
+	if _reroll_btn:
+		_reroll_btn.text = "Stok Çevir — 1 zar"
+		_reroll_btn.disabled = GameState.zar <= 0
 	for c in _relic_row.get_children():
 		c.queue_free()
 	for r: RelicData in _stock_relics:

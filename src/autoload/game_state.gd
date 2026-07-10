@@ -11,6 +11,7 @@ var layer_index := 0                      # haritada sıradaki katman
 var current_encounter: StringName = &"orta"
 var current_node_type: StringName = &"savas"
 
+var zar := 4                              # sefer boyu taşınan zar (gelistirme §6): reroll kaynağı
 var squad: Array = []                     # PieceData listesi (kadro, run içinde büyür)
 var squad_hp: Dictionary = {}             # squad index -> güncel CAN
 var mevzi: int = 6                        # savaş başı Mevzi (AP) (§21)
@@ -42,13 +43,15 @@ var meta_kalinti := 0                       # meta para birimi
 var meta_gold_lv := 0                        # +5 başlangıç altını / seviye
 var meta_flag_lv := 0                        # +5 başlangıç bayrak CAN / seviye
 var meta_mevzi_lv := 0                        # +1 başlangıç Mevzi / seviye
+var meta_degirmen_lv := 0                    # +2 sefer başı zar / seviye (Değirmen §6/§12)
 const META_PATH := "user://garrison.json"
 
 func save_meta() -> void:
 	var f := FileAccess.open(META_PATH, FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify({"kalinti": meta_kalinti,
-			"gold_lv": meta_gold_lv, "flag_lv": meta_flag_lv, "mevzi_lv": meta_mevzi_lv}))
+			"gold_lv": meta_gold_lv, "flag_lv": meta_flag_lv, "mevzi_lv": meta_mevzi_lv,
+			"degirmen_lv": meta_degirmen_lv}))
 
 func load_meta() -> void:
 	if not FileAccess.file_exists(META_PATH):
@@ -63,6 +66,7 @@ func load_meta() -> void:
 	meta_gold_lv = int(d.get("gold_lv", 0))
 	meta_flag_lv = int(d.get("flag_lv", 0))
 	meta_mevzi_lv = int(d.get("mevzi_lv", 0))
+	meta_degirmen_lv = int(d.get("degirmen_lv", 0))
 
 ## Sefer sonu meta kaynak ver (geçilen katmana göre) + kalıcı kaydet
 func award_meta(layers_cleared: int, won: bool) -> int:
@@ -79,6 +83,7 @@ func start_new_run(seed_value: int = 0) -> void:
 	layer_index = 0
 	mevzi = 6 + meta_mevzi_lv
 	player_flag_hp = PLAYER_FLAG_MAX + meta_flag_lv * 5
+	zar = 4 + meta_degirmen_lv * 2   # Değirmen (§6): sefer başı zar
 	run_over = false
 	relics = []
 	squad = []
@@ -97,15 +102,89 @@ func recruit_pool() -> Array:
 			pool.append(p)
 	return pool
 
+## Bayrak CAN tavanı (meta seviyesi dahil) — onarım/heal bu değeri aşamaz
+func flag_cap() -> int:
+	return PLAYER_FLAG_MAX + meta_flag_lv * 5
+
+## Bayrak dayanıklılığı harca (Gri Mezar riski §11). 1'in altına düşürmez;
+## bedel ödenemiyorsa false (bayrak zaten ölümün eşiğinde).
+func spend_flag(n: int) -> bool:
+	if player_flag_hp - n < 1:
+		return false
+	player_flag_hp -= n
+	return true
+
 ## Savaş sonu: oyuncu bayrağının kalan CAN'ını kalıcı olarak yaz. 0 = run biter.
 func apply_flag_result(remaining_hp: int) -> void:
 	player_flag_hp = maxi(0, remaining_hp)
 	if player_flag_hp <= 0:
 		run_over = true
 
+## Zar harca (reroll noktaları §6). Yetmiyorsa false.
+func spend_zar(n: int = 1) -> bool:
+	if zar < n:
+		return false
+	zar -= n
+	return true
+
 func add_unit(piece: PieceData) -> void:
 	squad.append(piece)
 	squad_hp[squad.size() - 1] = piece.can
+
+## Şaman Çadırı (§9): kadro birimine kalıcı stat yükseltmesi. Database kaynağını
+## KİRLETMEMEK için birim ilk yükseltmede kopyalanır (runlar arası sızıntı olmaz).
+## alan: &"saldiri" | &"can" | &"hiz"
+func upgrade_unit(index: int, alan: StringName, miktar: int) -> void:
+	var p: PieceData = squad[index]
+	if p.resource_path != "":           # hâlâ paylaşılan .tres → kopyala
+		p = p.duplicate()
+		squad[index] = p
+	p.set(alan, p.get(alan) + miktar)
+	p.upgrades += 1
+	if alan == &"can":                  # tavan büyüdü: mevcut CAN da aynı kadar artar
+		squad_hp[index] = clampi(int(squad_hp.get(index, p.can)) + miktar, 1, p.can)
+
+## Nitelik Dükkanı / Darağacı (§5): kadro birimine tabya ver. Slot doluysa false.
+## Paylaşılan .tres kirlenmesin diye ilk değişimde kopyalanır (upgrade_unit gibi).
+func give_trait(index: int, t: TraitData) -> bool:
+	var p: PieceData = squad[index]
+	if p.base_traits.size() >= p.tabya_slotu:
+		return false
+	if p.resource_path != "":
+		p = p.duplicate()
+		p.base_traits = p.base_traits.duplicate()
+		squad[index] = p
+	p.base_traits.append(t)
+	return true
+
+## Meydan kumarı (§7): statları yeniden dağıt + söylenti/upgrade ver. Kopyala-önce.
+func apply_gamble(index: int, yeni_a: int, yeni_c: int, yeni_h: int) -> void:
+	var p: PieceData = squad[index]
+	if p.resource_path != "":
+		p = p.duplicate()
+		squad[index] = p
+	p.saldiri = yeni_a
+	p.can = yeni_c
+	p.hiz = yeni_h
+	squad_hp[index] = clampi(int(squad_hp.get(index, yeni_c)), 1, yeni_c)
+
+## Söylenti tak (§14): birim başına 1 — yenisi eskisinin yerine geçer
+func set_rumor(index: int, r: TraitData) -> void:
+	var p: PieceData = squad[index]
+	if p.resource_path != "":
+		p = p.duplicate()
+		squad[index] = p
+	p.rumor = r
+
+## Darağacı (§5): birimi kadrodan çıkar — kalan birimlerin CAN durumu KORUNUR
+## (indeksler kayar; shop sürgünündeki "herkes iyileşir" yan etkisi burada yok).
+func remove_unit(index: int) -> void:
+	squad.remove_at(index)
+	var yeni := {}
+	for i in squad.size():
+		var eski_i := i if i < index else i + 1
+		yeni[i] = clampi(int(squad_hp.get(eski_i, squad[i].can)), 1, squad[i].can)
+	squad_hp = yeni
 
 func heal_all() -> void:
 	for i in squad.size():
@@ -125,9 +204,19 @@ func save_run() -> void:
 	var data := {
 		"gold": gold, "layer_index": layer_index, "player_flag_hp": player_flag_hp,
 		"run_seed": run_seed, "commander_id": String(commander_id), "run_over": run_over,
+		"zar": zar,
 		"squad_ids": squad.map(func(p: PieceData) -> String: return String(p.id)),
 		"relic_ids": relics.map(func(r: RelicData) -> String: return String(r.id)),
 		"squad_hp": hp,
+		# Şaman yükseltmeleri (§9): id'den yüklenen taban statların üstüne yazılır
+		"squad_stats": squad.map(func(p: PieceData) -> Dictionary:
+			return {"a": p.saldiri, "c": p.can, "h": p.hiz, "u": p.upgrades}),
+		# Nitelik Dükkanı / Darağacı tabyaları (§5): id listesi olarak saklanır
+		"squad_traits": squad.map(func(p: PieceData) -> Array:
+			return p.base_traits.map(func(t: TraitData) -> String: return String(t.id))),
+		# Söylentiler (§14): birim başına 1 id ("" = yok)
+		"squad_rumors": squad.map(func(p: PieceData) -> String:
+			return String(p.rumor.id) if p.rumor else ""),
 	}
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f:
@@ -150,11 +239,46 @@ func load_run() -> bool:
 	RNG.reseed(run_seed)
 	commander_id = StringName(data.get("commander_id", "cesur"))
 	run_over = data.get("run_over", false)
+	zar = int(data.get("zar", 4))
 	squad = []
+	var stats: Array = data.get("squad_stats", [])
+	var traits: Array = data.get("squad_traits", [])
 	for pid in data.get("squad_ids", []):
 		var p := Database.get_resource("pieces", StringName(pid))
-		if p:
-			squad.append(p)
+		if p == null:
+			continue
+		var si := squad.size()
+		# Şaman yükseltmesi varsa (statlar tabandan sapmış) kopyala + uygula
+		if si < stats.size() and typeof(stats[si]) == TYPE_DICTIONARY:
+			var s: Dictionary = stats[si]
+			if int(s.get("u", 0)) > 0:
+				p = p.duplicate()
+				p.saldiri = int(s.get("a", p.saldiri))
+				p.can = int(s.get("c", p.can))
+				p.hiz = int(s.get("h", p.hiz))
+				p.upgrades = int(s.get("u", 0))
+		# Söylenti varsa uygula (birim başına 1)
+		var rumors: Array = data.get("squad_rumors", [])
+		if si < rumors.size() and String(rumors[si]) != "":
+			var r := Database.get_resource("rumors", StringName(rumors[si]))
+			if r:
+				if p.resource_path != "":
+					p = p.duplicate()
+				p.rumor = r
+		# Tabya listesi tabandan farklıysa (Nitelik Dükkanı/Darağacı) uygula
+		if si < traits.size() and typeof(traits[si]) == TYPE_ARRAY:
+			var ids: Array = traits[si]
+			var base_ids: Array = p.base_traits.map(
+				func(t: TraitData) -> String: return String(t.id))
+			if ids != base_ids:
+				if p.resource_path != "":
+					p = p.duplicate()
+				p.base_traits = []
+				for tid in ids:
+					var t := Database.get_resource("traits", StringName(tid))
+					if t:
+						p.base_traits.append(t)
+		squad.append(p)
 	if squad.is_empty():
 		for p: PieceData in Database.get_all("pieces"):
 			if p.starter:

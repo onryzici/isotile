@@ -278,9 +278,14 @@ func _intro_pop(node: Node3D, coord: Vector2i) -> void:
 		.set_delay(board.intro_delay(coord) + 0.46) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
-## Resolver bağlamı: yükseklikler + zemin (saf mantık bunu okur)
+## Resolver bağlamı: yükseklikler + zemin + HIZ-eşitliği zarı için seed'li RNG.
+## RNG her çağrıda AYNI savaş-sabit seed'le TAZE kurulur → telegraph önizlemesi
+## ve gerçek savaş aynı zarları atar; aynı kurulum = aynı sonuç (determinizm §1.2).
 func _ctx() -> Dictionary:
-	return {"heights": board.height_map, "terrain": _terrain_setup, "relics": GameState.relics}
+	var rng := RandomNumberGenerator.new()
+	rng.seed = GameState.run_seed ^ hash(GameState.current_encounter) ^ (GameState.layer_index << 16)
+	return {"heights": board.height_map, "terrain": _terrain_setup,
+		"relics": GameState.relics, "rng": rng}
 
 ## mesh_id doluysa sprite yolu (§16.5 billboard birim), boşsa kapsül
 func _sprite_path(piece: PieceData) -> String:
@@ -315,6 +320,8 @@ func _setup_flags() -> void:
 	deployment.occupied[_player_flag_coord] = true   # bayrak tile'ı deploy'a kapalı
 	_player_flag_view = _make_flag_view(_player_flag_coord, true, GameState.player_flag_hp)
 	_enemy_flag_view = _make_flag_view(_enemy_flag_coord, false, _enemy_flag_hp)
+	if OS.get_cmdline_user_args().has("--debug-flagtile"):
+		get_tree().create_timer(2.0).timeout.connect(_debug_flag_geometry)
 
 ## Satırda merkezden dışa doğru ilk boş (avoid'da olmayan) tile
 func _free_tile_in_row(row: int, avoid: Dictionary) -> Vector2i:
@@ -324,9 +331,57 @@ func _free_tile_in_row(row: int, avoid: Dictionary) -> Vector2i:
 			return coord
 	return Vector2i(3, row)
 
+## Hata ayıklama: bayrak tabanının ve durduğu tile'ın üst-yüz elmasının EKRAN
+## koordinatlarını bastırır. "Bayrak tile'ın ortasında değil" iddiasını göz kararı
+## yerine pikselle doğrulamak için (--debug-flagtile).
+func _debug_flag_geometry() -> void:
+	var cam := camera_rig.camera
+	for entry in [[Vector2i(_player_flag_coord.x, -1), _player_flag_view, "MAVI"],
+			[_enemy_flag_coord, _enemy_flag_view, "KIRMIZI"]]:
+		var vc: Vector2i = entry[0]
+		var view: PieceView = entry[1]
+		var base := board.coord_to_world(vc)
+		var top_y := board.tile_top_y(vc)
+		var center := Vector3(base.x, top_y, base.z)
+		# Elmasın 4 köşesi (tile üst yüzü, kenar uzunluğu TILE_SIZE)
+		var h := BoardView.TILE_SIZE * 0.5
+		var corners := [Vector3(-h, 0, -h), Vector3(h, 0, -h), Vector3(h, 0, h), Vector3(-h, 0, h)]
+		var ys: Array[float] = []
+		for c: Vector3 in corners:
+			ys.append(cam.unproject_position(center + c).y)
+		ys.sort()
+		var diamond_mid := (ys[0] + ys[3]) * 0.5
+		print("[%s] tile merkez ekran=%s | elmas dikey orta=%.1f (tepe %.1f, dip %.1f)" % [
+			entry[2], cam.unproject_position(center), diamond_mid, ys[0], ys[3]])
+		print("      bayrak taban ekran=%s  => taban - elmasOrta = %.1f px" % [
+			cam.unproject_position(view.position), cam.unproject_position(view.position).y - diamond_mid])
+
+## Boss düğümlerinde düşman bayrağının YERİNE ejderha durur — zafer koşulu aynı
+## (§B.0/1: karşı bayrağı yık). Ejderha ayrıca saldırır ve tutuşturur (CombatUnit.make_boss).
+const BOSS_ENCOUNTERS: Array[StringName] = [&"boss", &"boss2"]
+const BOSS_ATK := 6
+const BOSS_SPD := 5
+
+func _is_boss_encounter() -> bool:
+	return GameState.current_encounter in BOSS_ENCOUNTERS
+
+## Düşman tarafının "yıkılacak hedefi": normal savaşta bayrak, boss'ta ejderha
+func _make_enemy_anchor(uid: int) -> CombatUnit:
+	if _is_boss_encounter():
+		return CombatUnit.make_boss(CombatResolver.SIDE_ENEMY, _enemy_flag_coord,
+			_enemy_flag_hp, uid, BOSS_ATK, BOSS_SPD, "Ejderha")
+	return CombatUnit.make_flag(CombatResolver.SIDE_ENEMY, _enemy_flag_coord,
+		_enemy_flag_hp, uid, "Düşman Bayrağı")
+
 func _make_flag_view(coord: Vector2i, side_blue: bool, hp: int) -> PieceView:
 	var view := PieceView.new()
 	add_child(view)
+	if not side_blue and _is_boss_encounter():
+		view.setup_boss(hp)
+		var b := board.coord_to_world(coord)
+		view.position = Vector3(b.x, board.tile_top_y(coord), b.z)
+		_intro_pop(view, coord)
+		return view
 	view.setup_flag(side_blue, hp)
 	# Oyuncu bayrağı GÖRSELDE ön kaide sırasında (satır −1) durur;
 	# mantık koordinatı (satır 0) değişmez — determinizm/hedefleme aynı.
@@ -646,8 +701,7 @@ func _build_units() -> Dictionary:
 	views[uid] = _player_flag_view
 	player_coords[uid] = _player_flag_coord
 	uid += 1
-	units.append(CombatUnit.make_flag(CombatResolver.SIDE_ENEMY, _enemy_flag_coord,
-		_enemy_flag_hp, uid, "Düşman Bayrağı"))
+	units.append(_make_enemy_anchor(uid))
 	views[uid] = _enemy_flag_view
 	return {"units": units, "views": views, "player_coords": player_coords,
 		"enemy_uids": enemy_uids, "player_flag": pflag}
@@ -698,8 +752,7 @@ func _start_battle() -> void:
 	_units.append(_battle_player_flag)
 	_view_by_uid[_uid_next] = _player_flag_view
 	_uid_next += 1
-	_units.append(CombatUnit.make_flag(CombatResolver.SIDE_ENEMY,
-		_enemy_flag_coord, _enemy_flag_hp, _uid_next, "Düşman Bayrağı"))
+	_units.append(_make_enemy_anchor(_uid_next))
 	_view_by_uid[_uid_next] = _enemy_flag_view
 	_presenter = CombatPresenter.new()
 	_presenter.camera_rig = camera_rig   # kritik vuruşta ekran sarsıntısı
@@ -742,13 +795,20 @@ func _run_turn() -> void:
 		if not dp.is_empty():
 			await _presenter.play_round(dp)
 	_round += 1
-	var events := CombatResolver.resolve_round(_units, _ctx(), _round, _combat_state)
+	var events := CombatResolver.resolve_round(_units, _ctx(), _round, _combat_state,
+		_player_reserves())
 	await _presenter.play_round(events)
 	_presenter.sync_views(_units)
-	if CombatResolver.is_over(_units) or _round >= BoardDefs.MAX_ROUND:
+	if CombatResolver.is_over(_units, _player_reserves()) or _round >= BoardDefs.MAX_ROUND:
 		_finish_battle()
 	else:
 		_enter_planning()
+
+## Dizilmemiş kadro üyesi sayısı (piece-out §13: sahada birim kalmasa da yedek
+## varsa savaş sürer). Ölen committed birimler _coord_by_index'te kaldığından
+## yedek sayılmaz — doğru.
+func _player_reserves() -> int:
+	return _squad.size() - _coord_by_index.size()
 
 ## Tur arası planlama: AP yenile, takviye dizmeye izin ver
 func _enter_planning() -> void:
@@ -806,7 +866,7 @@ func _commander_target(coord: Vector2i) -> void:
 	_cmd_cd = _cmd["cd"]
 	ui.set_commander(false, _cmd_cd)
 	_refresh_overlays()
-	if CombatResolver.is_over(_units):
+	if CombatResolver.is_over(_units, _player_reserves()):
 		_finish_battle()
 
 func _apply_commander_bolt(u: CombatUnit) -> void:
@@ -827,7 +887,7 @@ func _apply_commander_bolt(u: CombatUnit) -> void:
 
 func _finish_battle() -> void:
 	_phase = Phase.DONE
-	var kazanan := CombatResolver.winner(_units)
+	var kazanan := CombatResolver.winner(_units, _player_reserves())
 	var player_won := kazanan == "PLAYER"
 	_last_won = player_won
 	if player_won:

@@ -51,6 +51,8 @@ func _build() -> void:
 		GameState.meta_flag_lv += 1))
 	col.add_child(_upgrade("Seferberlik", "+1 başlangıç Mevzi", GameState.meta_mevzi_lv, func():
 		GameState.meta_mevzi_lv += 1))
+	col.add_child(_upgrade("Değirmen", "+2 sefer başı zar", GameState.meta_degirmen_lv, func():
+		GameState.meta_degirmen_lv += 1))
 
 	var back := Button.new()
 	back.text = "← GERİ"

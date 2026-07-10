@@ -28,6 +28,7 @@ const SIDE_PLAYER := 0
 const SIDE_ENEMY := 1
 
 const SUPPORT_HEAL := 2   # destek sınıfının aktivasyon iyileştirmesi (§3.4)
+const BOSS_YANIK_HASAR := 3   # BOSS Alev Nefesi: vuruşta uygulanan Yanık hasarı
 
 ## 8 yön — sabit sıra = deterministik tie-break
 const DIRS8: Array[Vector2i] = [
@@ -50,17 +51,20 @@ static func resolve(units: Array, ctx: Dictionary = {}, _seed: int = 0) -> Dicti
 ## TEK TUR çöz (§B.0/3 tur-tur döngüsü için): tur başı efektleri + aktivasyonlar.
 ## `state` diken gibi savaş-boyu tüketilenleri taşır (turlar arası korunmalı).
 ## Tur-tur modda battle_screen bunu her tur çağırır, aralarda AP planlaması yapar.
-static func resolve_round(units: Array, ctx: Dictionary, round_no: int, state: Dictionary) -> Array:
+## player_reserves: piece-out (§13) erken-çıkışının oyuncu yedeğini bilmesi için —
+## sahadaki son oyuncu birimi ölse de yedek varsa tur normal sürer (düşman yürür).
+static func resolve_round(units: Array, ctx: Dictionary, round_no: int, state: Dictionary,
+		player_reserves: int = 0) -> Array:
 	var events: Array = []
 	events.append({"t": "ROUND_START", "round": round_no})
 	_round_start_effects(units, ctx, round_no, events)   # zemin, DoT, aura, birikim, pus (§3.3)
-	if _battle_over(units):
+	if _battle_over(units, player_reserves):
 		return events
-	for unit: CombatUnit in _activation_order(units):
+	for unit: CombatUnit in _activation_order(units, ctx, events):
 		if not unit.alive:
 			continue
 		_activate(unit, units, ctx, state, events)
-		if _battle_over(units):
+		if _battle_over(units, player_reserves):
 			break
 	return events
 
@@ -78,15 +82,43 @@ static func deploy_procs_for(new_units: Array, all_units: Array, ctx: Dictionary
 
 # ------------------------------------------------------------- tur mekaniği
 
-## HIZ azalan; eşitlik: alt satır (küçük y), sonra küçük kolon, sonra uid (§3.3)
-static func _activation_order(units: Array) -> Array:
-	var order := units.filter(func(u: CombatUnit) -> bool: return u.alive and not u.is_flag)
+## HIZ azalan. Eşitlik: ZAR (gelistirme §6 — ctx'te seed'li rng varsa; savaş başına
+## birim başı BİR kez atılır, tie_roll'da saklanır, SPEED_DICE event'i üretir).
+## Zar da eşitse / rng yoksa: alt satır (küçük y), küçük kolon, uid (§3.3).
+## Determinizm: rng savaş-sabit seed'le kurulur; rng verilmezse davranış eskisiyle birebir.
+static func _activation_order(units: Array, ctx: Dictionary = {}, events: Array = []) -> Array:
+	# Bayraklar sıraya girmez; BOSS bir bayraktır ama saldırır → istisna.
+	var order := units.filter(func(u: CombatUnit) -> bool:
+		return u.alive and (not u.is_flag or u.is_boss))
+	var rng: RandomNumberGenerator = ctx.get("rng")
+	if rng != null:
+		_roll_speed_ties(order, rng, events)
 	order.sort_custom(func(a: CombatUnit, b: CombatUnit) -> bool:
 		if a.spd != b.spd: return a.spd > b.spd
+		if a.tie_roll != b.tie_roll: return a.tie_roll > b.tie_roll
 		if a.coord.y != b.coord.y: return a.coord.y < b.coord.y
 		if a.coord.x != b.coord.x: return a.coord.x < b.coord.x
 		return a.uid < b.uid)
 	return order
+
+## Aynı HIZ'ı paylaşan ve henüz zarı olmayan birimlere d6 at. Kararlı sırayla
+## (uid) atılır → seed sabitken sonuç sabit. Zar yalnız İLK eşitlikte atılır;
+## sonraki turlarda aynı zar geçerli (MoP: kim önce vurur savaş boyu bellidir).
+static func _roll_speed_ties(order: Array, rng: RandomNumberGenerator, events: Array) -> void:
+	var by_spd := {}
+	for u: CombatUnit in order:
+		by_spd.get_or_add(u.spd, []).append(u)
+	for spd in by_spd:
+		var group: Array = by_spd[spd]
+		if group.size() < 2:
+			continue
+		var fresh := group.filter(func(u: CombatUnit) -> bool: return u.tie_roll < 0)
+		if fresh.is_empty():
+			continue
+		fresh.sort_custom(func(a: CombatUnit, b: CombatUnit) -> bool: return a.uid < b.uid)
+		for u: CombatUnit in fresh:
+			u.tie_roll = rng.randi_range(1, 6)
+			events.append({"t": "SPEED_DICE", "unit_id": u.uid, "roll": u.tie_roll})
 
 static func _deploy_procs(units: Array, ctx: Dictionary, events: Array) -> void:
 	for unit: CombatUnit in _sorted_by_pos(units):
@@ -105,7 +137,8 @@ static func _round_start_effects(units: Array, ctx: Dictionary, round_no: int, e
 			_direct_damage(unit, 3, units, ctx, events)
 	# 1) DoT: Zehir (X hasar, X→X−1) ve Yanık (sabit X, Y tur) — §6
 	for unit: CombatUnit in _sorted_by_pos(units):
-		if not unit.alive or unit.is_flag:
+		# Bayrak DoT almaz; boss canlı bir yaratık → Zehir/Yanık ona da işler.
+		if not unit.alive or (unit.is_flag and not unit.is_boss):
 			continue
 		if unit.zehir > 0:
 			var z_dmg := unit.zehir
@@ -368,6 +401,10 @@ static func _attack(src: CombatUnit, dst: CombatUnit, units: Array, ctx: Diction
 	if absorbed > 0:
 		events.append({"t": "STATUS", "target": dst.uid, "status": "kalkan", "stacks": dst.kalkan})
 	src.vurus_sayaci += 1
+	# BOSS Alev Nefesi: her vuruş hedefi tutuşturur (§6 Yanık — sabit hasar, 2 tur).
+	# Tabya .tres'i yerine kural: boss PieceData'dan türemiyor, tabya taşımıyor.
+	if src.is_boss and dst.hp > 0:
+		_apply_status(dst, &"yanik", BOSS_YANIK_HASAR, events)
 	# ON_HIT tabyaları (Kan Kaybı, Sarsıcı) — hedef ölmediyse
 	if dst.hp > 0:
 		for t: TraitData in src.traits:
@@ -514,17 +551,32 @@ static func _side_alive(units: Array, side: int) -> bool:
 			return true
 	return false
 
-## Bayrak varsa: zafer = düşman bayrağını yıkmak (§B.0/1). Bayrak yoksa
-## (saf birim testleri): eski "bir taraf yok oldu" mantığı.
-static func _battle_over(units: Array) -> bool:
+## Tarafın SAVAŞAN birimi kaldı mı? Düz bayrak sayılmaz (savaşamaz); BOSS
+## savaşır → sayılır (ejderha canlıyken düşman "tükenmiş" olmaz).
+static func _side_pieces_alive(units: Array, side: int) -> bool:
+	for u: CombatUnit in units:
+		if u.alive and u.side == side and (not u.is_flag or u.is_boss):
+			return true
+	return false
+
+## Bayrak varsa: bir bayrak düştü VEYA bir taraf tükendi (simetrik piece-out,
+## gelistirme.md §13 — MoP'un tek taraflı kuralının düzeltmesi). Oyuncu için
+## "tükendi" = sahada birim yok VE dizilecek yedek yok (player_reserves).
+## Bayrak yoksa (saf birim testleri): eski "bir taraf yok oldu" mantığı.
+static func _battle_over(units: Array, player_reserves: int = 0) -> bool:
 	if _has_flags(units):
-		return not (_flag_alive(units, SIDE_PLAYER) and _flag_alive(units, SIDE_ENEMY))
+		if not (_flag_alive(units, SIDE_PLAYER) and _flag_alive(units, SIDE_ENEMY)):
+			return true
+		if not _side_pieces_alive(units, SIDE_ENEMY):
+			return true
+		return not _side_pieces_alive(units, SIDE_PLAYER) and player_reserves <= 0
 	return not (_side_alive(units, SIDE_PLAYER) and _side_alive(units, SIDE_ENEMY))
 
-## Kazanan. Bayraklıysa: düşman bayrağı düştüyse PLAYER, oyuncu bayrağı düştüyse
-## ENEMY; ikisi de ayakta (MAX_ROUND) ise bayrağı daha çok yıpranan kaybeder,
-## çifte ölüm/eşitlik OYUNCU ALEYHİNE (kaybetmek ilerlemedir, §1.5).
-static func _decide_winner(units: Array) -> String:
+## Kazanan. Bayraklıysa öncelik sırası: bayrak düşüşü → piece-out (ordusu
+## tükenen kaybeder — iki zafer yolu: orduyu yok et VEYA bayrağı yık) →
+## MAX_ROUND/çifte tükenmede bayrağı daha çok yıpranan kaybeder, eşitlik
+## OYUNCU ALEYHİNE (kaybetmek ilerlemedir, §1.5).
+static func _decide_winner(units: Array, player_reserves: int = 0) -> String:
 	if _has_flags(units):
 		var p := _flag_alive(units, SIDE_PLAYER)
 		var e := _flag_alive(units, SIDE_ENEMY)
@@ -533,6 +585,13 @@ static func _decide_winner(units: Array) -> String:
 		if e and not p:
 			return "ENEMY"
 		if not p and not e:
+			return "ENEMY"
+		# İki bayrak da ayakta → piece-out kararı
+		var p_pieces := _side_pieces_alive(units, SIDE_PLAYER) or player_reserves > 0
+		var e_pieces := _side_pieces_alive(units, SIDE_ENEMY)
+		if p_pieces and not e_pieces:
+			return "PLAYER"
+		if e_pieces and not p_pieces:
 			return "ENEMY"
 		var pf := _flag_of(units, SIDE_PLAYER)
 		var ef := _flag_of(units, SIDE_ENEMY)
@@ -555,13 +614,14 @@ static func _decide_winner(units: Array) -> String:
 
 # ------------------------------------------------------------- public durum
 
-## Savaş bitti mi (tur-tur mod battle_screen bunu her tur çağırır)
-static func is_over(units: Array) -> bool:
-	return _battle_over(units)
+## Savaş bitti mi (tur-tur mod battle_screen bunu her tur çağırır).
+## player_reserves: oyuncunun henüz dizilmemiş kadro üyesi sayısı (piece-out §13).
+static func is_over(units: Array, player_reserves: int = 0) -> bool:
+	return _battle_over(units, player_reserves)
 
 ## Kazanan ("PLAYER"/"ENEMY")
-static func winner(units: Array) -> String:
-	return _decide_winner(units)
+static func winner(units: Array, player_reserves: int = 0) -> String:
+	return _decide_winner(units, player_reserves)
 
 # ------------------------------------------------------------- bayrak yardımcıları
 

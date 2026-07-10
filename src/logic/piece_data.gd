@@ -19,6 +19,8 @@ enum Sinif { MELEE, RANGED, SUPPORT }
 @export var mesh_id: StringName = &""           # dummy: renkli kapsül
 @export var starter: bool = true                # false = recruit havuzu (ödül/dükkan)
 @export var fiyat: int = 8                       # dükkanda satın alma bedeli
+@export var upgrades: int = 0                    # Şaman Çadırı yükseltme sayısı (en çok 2, gelistirme §9)
+@export var rumor: TraitData = null              # Söylenti (§14): birim başına 1 zayıf pasif (Meydan verir)
 
 func trait_names() -> String:
 	var names: Array[String] = []

@@ -22,6 +22,8 @@ func _init() -> void:
 	_test_full_battle_and_determinism()
 	_test_pus_pressure_breaks_stall()
 	_test_flag_victory()
+	_test_piece_out()
+	_test_speed_dice()
 	if failures == 0:
 		print("\n=== TÜM TESTLER GEÇTİ ===")
 	else:
@@ -315,19 +317,92 @@ func _print_battle_log(result: Dictionary) -> void:
 			"DEATH":
 				print("    ☠ %s öldü" % names[e["unit_id"]])
 
-## Bayrak-yıkma zafer koşulu + kalıcı bayrak (§B.0/1-2)
+## Bayrak-yıkma zafer koşulu + kalıcı bayrak (§B.0/1-2).
+## NOT: piece-out (§13) eklendiğinden düşmanın sahada CANLI bir birimi olmalı —
+## yoksa savaş anında piece-out ile biter ve bayrak-yıkma yolu test edilmemiş olur.
+## Uzak köşedeki yavaş nöbetçi, hero bayrağı yıkana dek oyuncu bayrağına ulaşamaz.
 func _test_flag_victory() -> void:
 	print("\n[Bayrak-yıkma zafer koşulu — §B.0/1]")
 	var hero := _make_unit(5, 20, 5, PieceData.Sinif.MELEE, 0, Vector2i(2, 3), 1)
 	var pflag := CombatUnit.make_flag(0, Vector2i(2, 0), 30, 2)
 	var eflag := CombatUnit.make_flag(1, Vector2i(2, 4), 8, 3)
-	var r := CombatResolver.resolve([hero, pflag, eflag], {}, 1)
+	var guard := _make_unit(1, 10, 1, PieceData.Sinif.MELEE, 1, Vector2i(5, 4), 4)
+	var r := CombatResolver.resolve([hero, pflag, eflag, guard], {}, 1)
 	_check(r["kazanan"] == "PLAYER", "oyuncu düşman bayrağını yıktı")
 	_check(not eflag.alive, "düşman bayrağı düştü")
+	_check(guard.alive, "düşman birimi hâlâ canlı (bayrak yolu test edildi)")
 	_check(pflag.alive and pflag.hp == 30, "oyuncu bayrağı sağlam kaldı")
 	# Determinizm
 	var r2 := CombatResolver.resolve([
 		_make_unit(5, 20, 5, PieceData.Sinif.MELEE, 0, Vector2i(2, 3), 1),
 		CombatUnit.make_flag(0, Vector2i(2, 0), 30, 2),
-		CombatUnit.make_flag(1, Vector2i(2, 4), 8, 3)], {}, 1)
+		CombatUnit.make_flag(1, Vector2i(2, 4), 8, 3),
+		_make_unit(1, 10, 1, PieceData.Sinif.MELEE, 1, Vector2i(5, 4), 4)], {}, 1)
 	_check(r["events"].size() == r2["events"].size(), "aynı kurulum = aynı event sayısı")
+
+## Simetrik piece-out (§13): ordusu tükenen taraf ANINDA kaybeder — bayraklar
+## ayakta kalsa bile. İki zafer yolu: orduyu yok et VEYA bayrağı yık.
+func _test_piece_out() -> void:
+	print("\n[Simetrik piece-out — §13]")
+	# A) Düşman ordusu yok edildi → bayrak AYAKTA ama PLAYER kazandı
+	var hero := _make_unit(10, 30, 5, PieceData.Sinif.MELEE, 0, Vector2i(2, 3), 1)
+	var pflag := CombatUnit.make_flag(0, Vector2i(2, 0), 30, 2)
+	var eflag := CombatUnit.make_flag(1, Vector2i(2, 4), 30, 3)
+	var grunt := _make_unit(1, 4, 1, PieceData.Sinif.MELEE, 1, Vector2i(3, 3), 4)
+	var r := CombatResolver.resolve([hero, pflag, eflag, grunt], {}, 1)
+	_check(r["kazanan"] == "PLAYER", "düşman ordusu bitti → PLAYER (bayrak yıkılmadan)")
+	_check(eflag.alive, "düşman bayrağı hâlâ ayakta")
+	_check(r["rounds"] == 1, "savaş anında bitti (%d tur)" % r["rounds"])
+	# B) Oyuncu ordusu yok edildi (yedek yok) → ENEMY
+	var weakling := _make_unit(1, 3, 1, PieceData.Sinif.MELEE, 0, Vector2i(2, 3), 1)
+	var pflag2 := CombatUnit.make_flag(0, Vector2i(2, 0), 30, 2)
+	var eflag2 := CombatUnit.make_flag(1, Vector2i(3, 4), 30, 3)
+	var brute := _make_unit(10, 30, 9, PieceData.Sinif.MELEE, 1, Vector2i(2, 4), 4)
+	var rb := CombatResolver.resolve([weakling, pflag2, eflag2, brute], {}, 1)
+	_check(rb["kazanan"] == "ENEMY", "oyuncu ordusu bitti → ENEMY")
+	_check(pflag2.alive, "oyuncu bayrağı hâlâ ayakta")
+	# C) Yedek varken oyuncu piece-out TETİKLENMEZ (battle_screen yedeği geçer)
+	_check(not CombatResolver.is_over([weakling, pflag2, eflag2, brute], 1),
+		"yedek varken savaş sürer")
+	_check(CombatResolver.is_over([weakling, pflag2, eflag2, brute], 0),
+		"yedek yokken piece-out biter")
+	# D) BOSS canlıyken düşman "tükenmiş" sayılmaz (ejderha savaşan bayrak)
+	var hero2 := _make_unit(5, 20, 5, PieceData.Sinif.MELEE, 0, Vector2i(2, 3), 1)
+	var pflag3 := CombatUnit.make_flag(0, Vector2i(2, 0), 30, 2)
+	var boss := CombatUnit.make_boss(1, Vector2i(2, 4), 70, 3, 6, 5)
+	_check(not CombatResolver.is_over([hero2, pflag3, boss], 0),
+		"boss canlıyken savaş sürer (piece-out yok)")
+	# Determinizm (A senaryosu)
+	var r2 := CombatResolver.resolve([
+		_make_unit(10, 30, 5, PieceData.Sinif.MELEE, 0, Vector2i(2, 3), 1),
+		CombatUnit.make_flag(0, Vector2i(2, 0), 30, 2),
+		CombatUnit.make_flag(1, Vector2i(2, 4), 30, 3),
+		_make_unit(1, 4, 1, PieceData.Sinif.MELEE, 1, Vector2i(3, 3), 4)], {}, 1)
+	_check(r["events"].size() == r2["events"].size(), "piece-out determinist")
+
+## HIZ eşitliği zarı (gelistirme §6): ctx'te seed'li rng varsa eşit HIZ'lı birimler
+## zar atar; aynı seed = aynı sıra (determinizm). rng yoksa eski kural (event yok).
+func _test_speed_dice() -> void:
+	print("\n[HIZ eşitliği zarı — gelistirme §6]")
+	var mk := func() -> Array:
+		return [
+			_make_unit(2, 20, 5, PieceData.Sinif.MELEE, 0, Vector2i(2, 1), 1),
+			_make_unit(2, 20, 5, PieceData.Sinif.MELEE, 1, Vector2i(2, 3), 2)]
+	var ctx_a := {"rng": _seeded_rng(42)}
+	var r1: Array = CombatResolver.resolve_round(mk.call(), ctx_a, 1, {"diken": {}})
+	var dice1: Array = r1.filter(func(e): return e["t"] == "SPEED_DICE")
+	_check(dice1.size() == 2, "eşit HIZ'da iki birime zar atıldı (%d)" % dice1.size())
+	# Aynı seed → aynı zarlar
+	var ctx_b := {"rng": _seeded_rng(42)}
+	var r2: Array = CombatResolver.resolve_round(mk.call(), ctx_b, 1, {"diken": {}})
+	var dice2: Array = r2.filter(func(e): return e["t"] == "SPEED_DICE")
+	_check(JSON.stringify(dice1) == JSON.stringify(dice2), "aynı seed = aynı zarlar")
+	# rng yoksa zar event'i üretilmez (testler/eski davranış korunur)
+	var r3: Array = CombatResolver.resolve_round(mk.call(), {}, 1, {"diken": {}})
+	_check(r3.filter(func(e): return e["t"] == "SPEED_DICE").is_empty(),
+		"rng yokken zar yok (eski kural)")
+
+func _seeded_rng(s: int) -> RandomNumberGenerator:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = s
+	return rng

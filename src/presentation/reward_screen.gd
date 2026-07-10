@@ -2,12 +2,16 @@ class_name RewardScreen
 extends CanvasLayer
 ## Zafer ödülü (gelistirme B.2): savaş kazanınca 3 seçenekten biri —
 ## Altın / Recruit birim / Relic. Tek-tık seç → uygula → devam.
+## Zar (§6): 1 zar harcayıp teklifleri YENİDEN ÇEVİREBİLİRSİN (birim + relic
+## yeniden çekilir; şansı zorlama kaynağı).
 
 signal done
 
 const REWARD_GOLD := 18
 
 var _root: Control
+var _row: HBoxContainer
+var _reroll_btn: Button
 
 func _ready() -> void:
 	_root = Control.new()
@@ -39,13 +43,38 @@ func _ready() -> void:
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(hint)
 
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 16)
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	col.add_child(row)
+	_row = HBoxContainer.new()
+	_row.add_theme_constant_override("separation", 16)
+	_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_child(_row)
+	_build_offers()
+
+	var bottom := HBoxContainer.new()
+	bottom.add_theme_constant_override("separation", 12)
+	bottom.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_child(bottom)
+
+	_reroll_btn = Button.new()
+	_reroll_btn.custom_minimum_size = Vector2(240, 44)
+	_reroll_btn.focus_mode = Control.FOCUS_NONE
+	_reroll_btn.pressed.connect(_reroll)
+	bottom.add_child(_reroll_btn)
+	_update_reroll()
+
+	var skip := Button.new()
+	skip.text = "Atla"
+	skip.custom_minimum_size = Vector2(140, 44)
+	skip.focus_mode = Control.FOCUS_NONE
+	skip.pressed.connect(_finish)
+	bottom.add_child(skip)
+
+## Teklif kartlarını (yeniden) kur: Altın sabit, birim + relic havuzdan çekilir
+func _build_offers() -> void:
+	for c in _row.get_children():
+		c.queue_free()
 
 	# 1) Altın
-	row.add_child(_card("💰 Altın", "+%d altın" % REWARD_GOLD, func():
+	_row.add_child(_card("💰 Altın", "+%d altın" % REWARD_GOLD, func():
 		GameState.gold += REWARD_GOLD
 		_finish()))
 
@@ -53,7 +82,7 @@ func _ready() -> void:
 	var pool: Array = GameState.recruit_pool()
 	if not pool.is_empty():
 		var unit: PieceData = RNG.pick(pool)
-		row.add_child(_card("⚔ %s" % unit.ad, "%s\n%s\nBölüğe katılır" % [
+		_row.add_child(_card("⚔ %s" % unit.ad, "%s\n%s\nBölüğe katılır" % [
 			unit.stat_text(), unit.trait_names() if unit.trait_names() != "" else "—"],
 			func():
 				GameState.add_unit(unit)
@@ -62,16 +91,22 @@ func _ready() -> void:
 	# 3) Relic (sahip olunmayanlardan rastgele)
 	var relic := _random_relic()
 	if relic != null:
-		row.add_child(_card("✦ %s" % relic.ad, relic.aciklama, func():
+		_row.add_child(_card("✦ %s" % relic.ad, relic.aciklama, func():
 			GameState.relics.append(relic)
 			_finish()))
 
-	var skip := Button.new()
-	skip.text = "Atla"
-	skip.custom_minimum_size = Vector2(140, 44)
-	skip.focus_mode = Control.FOCUS_NONE
-	skip.pressed.connect(_finish)
-	col.add_child(skip)
+func _update_reroll() -> void:
+	_reroll_btn.text = "Yeniden Çevir — 1 zar (kalan %d)" % GameState.zar
+	_reroll_btn.disabled = GameState.zar <= 0
+
+## 1 zar harca → zar animasyonu → teklifler yeniden çekilir
+func _reroll() -> void:
+	if not GameState.spend_zar():
+		return
+	_reroll_btn.disabled = true
+	DiceRoll.play(self, 1 + randi() % 6, func() -> void:
+		_build_offers()
+		_update_reroll())
 
 func _card(baslik: String, alt: String, on_pick: Callable) -> Button:
 	var b := Button.new()

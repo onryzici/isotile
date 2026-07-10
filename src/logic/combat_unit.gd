@@ -37,6 +37,8 @@ var lanet_sure: int = 0          # ×0.5 Kat
 
 var alive := true
 var is_flag := false          # bayrak/kamp birimi (§B.0/1): hareketsiz hedef, CAN'lı
+var is_boss := false          # BOSS: bayrağın yerine geçer (zafer koşulu aynı) AMA saldırır
+var tie_roll := -1            # HIZ eşitliği zarı (gelistirme §6): savaşta bir kez atılır, -1 = atılmadı
 
 ## Bayrak birimi (gelistirme B.0/1): ızgaranın karşı ucunda, CAN'lı, hareketsiz.
 ## Zafer = düşman bayrağını yıkmak. Oyuncu bayrağı CAN'ı run boyu KALICI (§B.0/2).
@@ -55,6 +57,27 @@ static func make_flag(side_: int, coord_: Vector2i, hp_: int, uid_: int, ad_: St
 	u.is_flag = true
 	return u
 
+## BOSS birimi: düşman bayrağının YERİNE geçer (boss düğümlerinde bayrak yok).
+## `is_flag` açık kalır → zafer/yenilgi koşulu (§B.0/1) ve melee lane-push aynen çalışır.
+## `is_boss` ile farkı: aktivasyon sırasına GİRER, menzilli saldırır, her vuruşta
+## hedefi tutuşturur (Alev Nefesi). Pus Basıncı'ndan muaftır (is_flag).
+static func make_boss(side_: int, coord_: Vector2i, hp_: int, uid_: int,
+		atk_: int, spd_: int, ad_: String = "Ejderha") -> CombatUnit:
+	var u := CombatUnit.new()
+	u.uid = uid_
+	u.piece_id = &"__boss"       # sunum katmanı ejderha görselini/alev efektini bundan seçer
+	u.ad = ad_
+	u.side = side_
+	u.sinif = PieceData.Sinif.RANGED   # yerinden kımıldamaz, en yakına alev püskürtür
+	u.coord = coord_
+	u.atk = atk_
+	u.hp = hp_
+	u.max_hp = hp_
+	u.spd = spd_
+	u.is_flag = true
+	u.is_boss = true
+	return u
+
 static func from_piece(piece: PieceData, side_: int, coord_: Vector2i, uid_: int) -> CombatUnit:
 	var u := CombatUnit.new()
 	u.uid = uid_
@@ -69,6 +92,8 @@ static func from_piece(piece: PieceData, side_: int, coord_: Vector2i, uid_: int
 	u.spd = piece.hiz
 	u.zirh = piece.zirh
 	u.traits = piece.base_traits.duplicate()
+	if piece.rumor:                       # Söylenti (§14): zayıf pasif, tabya gibi işler
+		u.traits.append(piece.rumor)
 	u.etiketler = piece.etiketler.duplicate()
 	return u
 

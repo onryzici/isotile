@@ -82,22 +82,30 @@ const DEFS := {
 ## düğümlerden biri seçilir. Gerçek KARABASAN boss'u M3'te.
 const MAP_TEMPLATE := [
 	[{"type": &"savas", "enc": &"kolay", "ad": "Savaş"}],
-	[{"type": &"savas", "enc": &"orta", "ad": "Savaş"}, {"type": &"dukkan", "ad": "Dükkan"}],
-	[{"type": &"olay", "ad": "Olay"}, {"type": &"savas", "enc": &"orta2", "ad": "Savaş"}],
-	[{"type": &"elit", "enc": &"elit", "ad": "ELİT"}],
-	[{"type": &"dukkan", "ad": "Dükkan"}],
+	[{"type": &"savas", "enc": &"orta", "ad": "Savaş"}, {"type": &"dukkan", "ad": "Dükkan"},
+		{"type": &"nitelik", "ad": "Nitelik Dükkanı"}],
+	[{"type": &"olay", "ad": "Olay"}, {"type": &"savas", "enc": &"orta2", "ad": "Savaş"},
+		{"type": &"saman", "ad": "Şaman Çadırı"}],
+	[{"type": &"elit", "enc": &"elit", "ad": "ELİT"}, {"type": &"mezar", "ad": "Gri Mezar"},
+		{"type": &"yadigar", "ad": "Yadigar Dükkanı"}],
+	[{"type": &"dukkan", "ad": "Dükkan"}, {"type": &"revir", "ad": "Sahra Revan"}],
 	[{"type": &"boss", "enc": &"boss", "ad": "BOSS"}],
 	# 2. bölge — Kemik Bataklığı
-	[{"type": &"savas", "enc": &"orta3", "ad": "Savaş"}, {"type": &"dukkan", "ad": "Dükkan"}],
-	[{"type": &"olay", "ad": "Olay"}, {"type": &"elit", "enc": &"elit2", "ad": "ELİT"}],
-	[{"type": &"dukkan", "ad": "Dükkan"}],
+	[{"type": &"savas", "enc": &"orta3", "ad": "Savaş"}, {"type": &"dukkan", "ad": "Dükkan"},
+		{"type": &"meydan", "ad": "Meydan"}],
+	[{"type": &"olay", "ad": "Olay"}, {"type": &"elit", "enc": &"elit2", "ad": "ELİT"},
+		{"type": &"mezar", "ad": "Gri Mezar"}],
+	[{"type": &"revir", "ad": "Sahra Revan"}, {"type": &"dukkan", "ad": "Dükkan"},
+		{"type": &"daragaci", "ad": "Darağacı"}],
 	[{"type": &"boss", "enc": &"boss2", "ad": "BOSS"}],
 ]
 
 ## Düşman bayrağı CAN'ı (§B.0/1) — zorlukla ölçeklenir
+## Boss düğümlerinde bu CAN bayrağa değil EJDERHA'ya aittir (battle_screen._make_enemy_anchor);
+## ejderha saldırdığı ve tutuşturduğu için bandı belirgin şekilde yüksek.
 const FLAG_HP := {
-	&"kolay": 16, &"orta": 20, &"orta2": 22, &"elit": 30, &"boss": 45,
-	&"orta3": 26, &"elit2": 34, &"boss2": 55,
+	&"kolay": 16, &"orta": 20, &"orta2": 22, &"elit": 30, &"boss": 70,
+	&"orta3": 26, &"elit2": 34, &"boss2": 95,
 }
 
 static func get_def(id: StringName) -> Dictionary:
