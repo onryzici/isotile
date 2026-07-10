@@ -47,7 +47,7 @@ func _build() -> void:
 
 	var title := Label.new()
 	title.theme_type_variation = "Title"
-	title.text = "PUS"
+	title.text = "AĞIL"
 	title.add_theme_font_size_override("font_size", 132)
 	title.add_theme_color_override("font_color", Color(0.93, 0.84, 0.58))
 	title.add_theme_color_override("font_outline_color", Color(0.35, 0.12, 0.42, 0.9))
@@ -57,7 +57,7 @@ func _build() -> void:
 	stack.add_child(title)
 
 	var sub := Label.new()
-	sub.text = "dünyayı yutan kara sis inmeden önce"
+	sub.text = "kara pus dünyayı yuttu — son sürüyü topla"
 	sub.add_theme_font_size_override("font_size", 20)
 	sub.add_theme_color_override("font_color", Color(0.62, 0.58, 0.66))
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
